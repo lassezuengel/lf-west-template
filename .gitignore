@@ -13,5 +13,6 @@ deps/
 **/src-gen/
 **/include/
 
+.vscode
 
 zephyr-tests/
