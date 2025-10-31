@@ -63,7 +63,7 @@ class Lfc(WestCommand):
         
         # Invoke west in the `src-gen` directory. Pass in 
         if args.build:
-          westCmd = f"west build {srcGenPath} {args.build}"
+          westCmd = f"cd {srcGenPath} && west build . {args.build}"
           print(f"Executing west command: `{westCmd}`")
           res = subprocess.Popen(westCmd, shell=True)
           ret = res.wait()
