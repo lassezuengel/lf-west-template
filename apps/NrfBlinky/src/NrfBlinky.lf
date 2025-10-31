@@ -5,28 +5,54 @@
 target C {
     platform: {
         name: "Zephyr",
-        board: nrf52dk_nrf52832,
+        board: nrf52840dk_nrf52840,
     },
-    single-threaded: true
+    single-threaded: true,
+    systemview: true
 }
 
 preamble {=
     #include <zephyr/kernel.h>
     #include <zephyr/drivers/gpio.h>
     #include <assert.h>
+    #include <SEGGER_SYSVIEW.h>
     #define LED0_NODE DT_ALIAS(led0)
-    static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+    #define LED1_NODE DT_ALIAS(led1)
+    #define LED2_NODE DT_ALIAS(led2)
+    #define LED3_NODE DT_ALIAS(led3)
+
+    static const struct gpio_dt_spec leds[] = { 
+        GPIO_DT_SPEC_GET(LED0_NODE, gpios),
+        GPIO_DT_SPEC_GET(LED1_NODE, gpios),
+        GPIO_DT_SPEC_GET(LED2_NODE, gpios), 
+        GPIO_DT_SPEC_GET(LED3_NODE, gpios)
+    };
+
+    static int simulated_event_id = 42;
+    static int sysview_init(const struct device *dev) { ARG_UNUSED(dev); SEGGER_SYSVIEW_Conf(); SEGGER_SYSVIEW_Start(); return 0; }
 =}
 
 main reactor {
-    timer t (0, 300 msec)
+    timer t (0, 60 msec)
+    state counter: int = 0
     
     reaction(startup) {=
-        assert(device_is_ready(led.port));
-        gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        SYS_INIT(sysview_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+        
+        for(int i = 0; i < 4; i++) {
+            assert(device_is_ready(leds[i].port));
+            gpio_pin_configure_dt(&leds[i], GPIO_OUTPUT_ACTIVE);
+        }
     =}
     
     reaction(t) {=
-        gpio_pin_toggle_dt(&led);
+        // Fake ISR entry/exit to log the event in SystemView
+        SEGGER_SYSVIEW_RecordEnterISR();
+
+        SEGGER_SYSVIEW_NameResource((uintptr_t)&simulated_event_id, "Simulated Event");
+        gpio_pin_toggle_dt(&leds[self->counter % 4]);
+        self->counter++;
+
+        SEGGER_SYSVIEW_RecordExitISR();
     =}
 }
