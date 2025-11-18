@@ -1,11 +1,11 @@
-target C /*{
+target C {
     platform: {
         name: "Zephyr",
         board: nrf52840dk_nrf52840,
     },
-    systemview: enableAndInstrument,
+    // systemview: enableAndInstrument,
     coordination: decentralized
-}*/
+}
 
 reactor Count {
   output out: int

@@ -35,9 +35,7 @@ preamble {=
         for(volatile int i = 0; i < 50000; i++);
     }
 
-    static int simulated_event_id = 42;
     static int sysview_init(const struct device *dev) { ARG_UNUSED(dev); SEGGER_SYSVIEW_Conf(); SEGGER_SYSVIEW_Start(); return 0; }
-    
     SYS_INIT(sysview_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 =}
 

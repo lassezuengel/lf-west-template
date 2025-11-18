@@ -5,12 +5,14 @@ application/include
 
 scripts/__pycache__
 build/
+bin/
 
 deps/
 
 .venv/
 **/build
 **/src-gen/
+**/fed-gen/
 **/include/
 
 .vscode
