@@ -15,7 +15,6 @@ preamble {=
     #include <zephyr/kernel.h>
     #include <zephyr/drivers/gpio.h>
     #include <assert.h>
-    #include <SEGGER_SYSVIEW.h>
     #define LED0_NODE DT_ALIAS(led0)
     #define LED1_NODE DT_ALIAS(led1)
     #define LED2_NODE DT_ALIAS(led2)
@@ -29,14 +28,8 @@ preamble {=
     };
 
     static void waitSomeTime() {
-        // uint32_t start = lf_time_physical_elapsed();
-        // while(lf_time_physical_elapsed() - start < 1000000) {
-        // }
         for(volatile int i = 0; i < 50000; i++);
     }
-
-    static int sysview_init(const struct device *dev) { ARG_UNUSED(dev); SEGGER_SYSVIEW_Conf(); SEGGER_SYSVIEW_Start(); return 0; }
-    SYS_INIT(sysview_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 =}
 
 main reactor {
