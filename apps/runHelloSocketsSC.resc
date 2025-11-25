@@ -1,0 +1,43 @@
+# Renode script for nRF52840 6LoWPAN TCP test
+# Usage: (monitor) include @path/to/this.resc
+
+# Create wireless medium for 802.15.4
+emulation CreateIEEE802_15_4Medium "wireless"
+
+# Create Server node
+mach create "server"
+machine LoadPlatformDescription @platforms/cpus/nrf52840.repl
+sysbus LoadELF @HelloSocketsS/build/zephyr/zephyr.elf
+
+# Connect server's radio to wireless medium
+connector Connect sysbus.radio wireless
+
+# Show server output
+showAnalyzer sysbus.uart0
+
+# Create Client node  
+mach create "client"
+machine LoadPlatformDescription @platforms/cpus/nrf52840.repl
+sysbus LoadELF @HelloSocketsC/build/zephyr/zephyr.elf
+
+# Connect client's radio to wireless medium
+connector Connect sysbus.radio wireless
+
+# Show client output
+showAnalyzer sysbus.uart0
+
+# Start both machines
+mach set "server"
+start
+
+mach set "client"
+start
+
+echo "Both nodes started. Server and client should communicate over 6LoWPAN."
+echo "Watch the UART analyzers for output."
+echo ""
+echo "Useful commands:"
+echo "  mach set \"server\"  - switch to server"
+echo "  mach set \"client\"  - switch to client"
+echo "  pause              - pause simulation"
+echo "  start              - resume simulation"
