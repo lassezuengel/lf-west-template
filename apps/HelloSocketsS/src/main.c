@@ -12,9 +12,16 @@ void main(void)
 {
 	printk("Starting 6LoWPAN TCP test (server)\n");
 	
+    #if 1
 	k_sleep(K_SECONDS(3)); // Wait for network setup
 
-#if 1
+    {
+        struct net_if *iface = net_if_get_default();
+        struct in6_addr addr;
+        inet_pton(AF_INET6, "2001:db8::1", &addr);
+        net_if_ipv6_addr_add(iface, &addr, NET_ADDR_MANUAL, 0);
+    }
+
 	// Server mode
 	int srv_sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 	if (srv_sock < 0) {

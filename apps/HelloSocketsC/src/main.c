@@ -1,9 +1,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
 #include <string.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
 
 #define SERVER_PORT 4242
-#define IS_SERVER 0  // Set to 1 for server, 0 for client
 
 // Use simplified addressing
 #define SERVER_ADDR "2001:db8::1"
@@ -11,12 +12,17 @@
 void main(void)
 {
 	printk("Starting 6LoWPAN TCP test (client)\n");
-	
-	k_sleep(K_SECONDS(3)); // Wait for network setup
 
 #if 1
 	// Client mode
 	k_sleep(K_SECONDS(3)); // Extra delay for server to start
+
+    {
+        struct net_if *iface = net_if_get_default();
+        struct in6_addr addr;
+        inet_pton(AF_INET6, "2001:db8::2", &addr);
+        net_if_ipv6_addr_add(iface, &addr, NET_ADDR_MANUAL, 0);
+    }
 
 	int sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 	if (sock < 0) {
