@@ -1,0 +1,12 @@
+# Create machines
+mach create "fed1"
+machine LoadPlatformDescription @platforms/cpus/nrf52840.repl
+sysbus LoadELF @fed-gen/NrfDistribute/src-gen/federate__c/build/zephyr/zephyr.elf
+showAnalyzer uart0                                    
+
+mach create "fed2"
+machine LoadPlatformDescription @platforms/cpus/nrf52840.repl
+sysbus LoadELF @fed-gen/NrfDistribute/src-gen/federate__p/build/zephyr/zephyr.elf
+showAnalyzer uart0
+
+start
