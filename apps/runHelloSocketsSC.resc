@@ -13,6 +13,7 @@ sysbus LoadELF @HelloSocketsS/build/zephyr/zephyr.elf
 connector Connect sysbus.radio wireless
 
 # Show server output
+logLevel -1 sysbus.radio
 showAnalyzer sysbus.uart0
 
 # Create Client node  
@@ -24,6 +25,7 @@ sysbus LoadELF @HelloSocketsC/build/zephyr/zephyr.elf
 connector Connect sysbus.radio wireless
 
 # Show client output
+logLevel -1 sysbus.radio
 showAnalyzer sysbus.uart0
 
 # Start both machines
@@ -33,10 +35,8 @@ start
 mach set "client"
 start
 
-echo "Both nodes started. Server and client should communicate over 6LoWPAN."
-echo "Watch the UART analyzers for output."
+echo "Both nodes started."
 echo ""
-echo "Useful commands:"
 echo "  mach set \"server\"  - switch to server"
 echo "  mach set \"client\"  - switch to client"
 echo "  pause              - pause simulation"
