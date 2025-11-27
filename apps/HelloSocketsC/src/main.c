@@ -20,13 +20,14 @@ void main(void)
 
     {
         struct net_if *iface = net_if_get_default();
-
+				
         uint16_t pan_id = 0xabcd;
         net_mgmt(NET_REQUEST_IEEE802154_SET_PAN_ID, iface, &pan_id, sizeof(pan_id));
-
+				
         struct ieee802154_req_params params = { .channel = 26 };
         net_mgmt(NET_REQUEST_IEEE802154_SET_CHANNEL, iface, &params, sizeof(params));
-
+				
+        k_sleep(K_SECONDS(2));
         // Bring interface up and wait for link-local
         net_if_up(iface);
         k_sleep(K_SECONDS(2));
