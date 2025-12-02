@@ -1,115 +1,133 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
-#include <string.h>
-#include <zephyr/net/net_if.h>
-#include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
-#include <zephyr/net/ieee802154_mgmt.h>
-#include <zephyr/net/net_core.h>
+#include <zephyr/net/net_event.h>
+#include <zephyr/net/conn_mgr_monitor.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(tcp_client, LOG_LEVEL_INF);
 
 #define SERVER_PORT 4242
+#define RECV_BUF_SIZE 128
 
-#define SERVER_ADDR "fe80::1"
+#define SERVER_ADDR "2001:db8::2"
 
-void main(void)
+static K_SEM_DEFINE(network_connected, 0, 1);
+static bool is_connected = false;
+
+static void net_event_handler(struct net_mgmt_event_callback *cb,
+                              uint32_t mgmt_event, struct net_if *iface)
 {
-	printk("Starting 6LoWPAN TCP test (client)\n");
-
-#if 1
-	// Client mode
-	k_sleep(K_SECONDS(4)); // Extra delay for server to start
-
-    {
-        struct net_if *iface = net_if_get_default();
-				
-        uint16_t pan_id = 0xabcd;
-        net_mgmt(NET_REQUEST_IEEE802154_SET_PAN_ID, iface, &pan_id, sizeof(pan_id));
-				
-				uint16_t short_addr = 0x0002;
-				net_mgmt(NET_REQUEST_IEEE802154_SET_SHORT_ADDR, iface, &short_addr, sizeof(short_addr));
-
-        struct ieee802154_req_params params = { .channel = 26 };
-        net_mgmt(NET_REQUEST_IEEE802154_SET_CHANNEL, iface, &params, sizeof(params));
-				
-        k_sleep(K_SECONDS(2));
-        // Bring interface up and wait for link-local
-        net_if_up(iface);
-        k_sleep(K_SECONDS(2));
-
-        struct in6_addr addr;
-        inet_pton(AF_INET6, "fe80::2", &addr);
-        net_if_ipv6_addr_add(iface, &addr, NET_ADDR_MANUAL, 0);
-
-        // Verify address
-        // char addr_str[NET_IPV6_ADDR_LEN];
-        // struct net_if_ipv6 *ipv6 = iface->config.ip.ipv6;
-        // if (ipv6 && ipv6->unicast[0].is_used) {
-        //     net_addr_ntop(AF_INET6, &ipv6->unicast[0].address.in6_addr, addr_str, sizeof(addr_str));
-        //     printk("IPv6 addr: %s\n", addr_str);
-        // } else {
-        //     printk("NO IPv6 ADDRESS SET!\n");
-        // }
-
-				// printk("My EUI-64: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n",
-				// 			net_if_get_link_addr(iface)->addr[0],
-				// 			net_if_get_link_addr(iface)->addr[1],
-				// 			net_if_get_link_addr(iface)->addr[2],
-				// 			net_if_get_link_addr(iface)->addr[3],
-				// 			net_if_get_link_addr(iface)->addr[4],
-				// 			net_if_get_link_addr(iface)->addr[5],
-				// 			net_if_get_link_addr(iface)->addr[6],
-				// 			net_if_get_link_addr(iface)->addr[7]);
-
-				// Server adds client's IP mapping
-				// struct in6_addr peer_ipv6;
-				// inet_pton(AF_INET6, "2001:db8::1", &peer_ipv6); // SERVER IP on client side
-
-				// uint8_t peer_short[2] = {0x00, 0x01}; // 0x0001 for server on client, 0x0002 for client on server
-				// struct net_linkaddr peer_ll = {
-				// 		.addr = peer_short,
-				// 		.len = 2
-				// };
-
-				// net_ipv6_nbr_add(iface, &peer_ipv6, &peer_ll, false, NET_IPV6_NBR_STATE_REACHABLE);
-    }
-
-	int sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-	if (sock < 0) {
-		printk("Client socket failed: %d\n", errno);
-		return;
+	if (mgmt_event == NET_EVENT_L4_CONNECTED) {
+		printk("Network connected");
+		is_connected = true;
+		k_sem_give(&network_connected);
+	} else if (mgmt_event == NET_EVENT_L4_DISCONNECTED) {
+		printk("Network disconnected");
+		is_connected = false;
 	}
+}
 
-	struct sockaddr_in6 addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(SERVER_PORT);
-	addr.sin6_scope_id = net_if_get_by_iface(net_if_get_default());
+int main(void)
+{
+	static struct net_mgmt_event_callback mgmt_cb;
+	struct sockaddr_in6 server_addr;
+	int sock;
+	char buf[RECV_BUF_SIZE];
+	int ret;
+	int msg_count = 0;
+
+	printk("Starting TCP client");
+
+	/* Setup network event callback */
+	net_mgmt_init_event_callback(&mgmt_cb, net_event_handler,
+	                             NET_EVENT_L4_CONNECTED | 
+	                             NET_EVENT_L4_DISCONNECTED);
+	net_mgmt_add_event_callback(&mgmt_cb);
 	
-	if (inet_pton(AF_INET6, SERVER_ADDR, &addr.sin6_addr) != 1) {
-		printk("Invalid address\n");
+	/* Trigger connection status check */
+	conn_mgr_mon_resend_status();
+
+	/* Wait for network to be ready */
+	printk("Waiting for network connection...");
+	k_sem_take(&network_connected, K_FOREVER);
+	printk("Network ready");
+
+	/* Prepare server address */
+	memset(&server_addr, 0, sizeof(server_addr));
+	server_addr.sin6_family = AF_INET6;
+	server_addr.sin6_port = htons(SERVER_PORT);
+	
+	ret = inet_pton(AF_INET6, SERVER_ADDR, &server_addr.sin6_addr);
+	if (ret != 1) {
+		printk("Invalid server address");
+		return -1;
+	}
+
+	/* Connection loop */
+	while (1) {
+		if (!is_connected) {
+			printk("Network not connected, waiting...");
+			k_sleep(K_SECONDS(5));
+			continue;
+		}
+
+		/* Create socket */
+		sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+		if (sock < 0) {
+			printk("Failed to create socket: %d", errno);
+			k_sleep(K_SECONDS(5));
+			continue;
+		}
+
+		/* Connect to server */
+		printk("Connecting to server...");
+		ret = connect(sock, (struct sockaddr *)&server_addr, 
+		              sizeof(server_addr));
+		if (ret < 0) {
+			printk("Connect failed: %d", errno);
+			close(sock);
+			k_sleep(K_SECONDS(5));
+			continue;
+		}
+
+		printk("Connected to server");
+
+		/* Send and receive messages */
+		for (int i = 0; i < 10; i++) {
+			char msg[32];
+			snprintf(msg, sizeof(msg), "Message %d", msg_count++);
+			
+			printk("Sending: %s", msg);
+			ret = send(sock, msg, strlen(msg), 0);
+			if (ret < 0) {
+				printk("Send failed: %d", errno);
+				break;
+			}
+
+			/* Receive echo */
+			ret = recv(sock, buf, sizeof(buf) - 1, 0);
+			if (ret <= 0) {
+				if (ret == 0) {
+					printk("Server closed connection");
+				} else {
+					printk("Receive failed: %d", errno);
+				}
+				break;
+			}
+
+			buf[ret] = '\0';
+			printk("Received: %s", buf);
+
+			k_sleep(K_SECONDS(2));
+		}
+
+		printk("Closing connection");
 		close(sock);
-		return;
+		
+		/* Wait before reconnecting */
+		k_sleep(K_SECONDS(10));
 	}
 
-	printk("Connecting to server...\n");
-	if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		printk("Connect failed: %d\n", errno);
-		close(sock);
-		return;
-	}
-
-	printk("Connected! Sending data...\n");
-	const char *msg = "Hello from nRF52840!";
-	send(sock, msg, strlen(msg), 0);
-
-	char buf[64];
-	int ret = recv(sock, buf, sizeof(buf) - 1, 0);
-	if (ret > 0) {
-		buf[ret] = '\0';
-		printk("Server replied: %s\n", buf);
-	}
-
-	close(sock);
-	printk("Done!\n");
-#endif
+	return 0;
 }
