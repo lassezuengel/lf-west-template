@@ -62,19 +62,11 @@ static void start_udp_and_tcp(void)
 	if (IS_ENABLED(CONFIG_NET_TCP)) {
 		start_tcp();
 	}
-
-	if (IS_ENABLED(CONFIG_NET_UDP)) {
-		start_udp();
-	}
 }
 
 static void stop_udp_and_tcp(void)
 {
 	LOG_INF("Stopping...");
-
-	if (IS_ENABLED(CONFIG_NET_UDP)) {
-		stop_udp();
-	}
 
 	if (IS_ENABLED(CONFIG_NET_TCP)) {
 		stop_tcp();

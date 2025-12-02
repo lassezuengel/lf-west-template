@@ -154,13 +154,6 @@ static int start_udp_and_tcp(void)
 		}
 	}
 
-	if (IS_ENABLED(CONFIG_NET_UDP)) {
-		ret = start_udp();
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
 	prepare_fds();
 
 	return 0;
@@ -179,23 +172,12 @@ static int run_udp_and_tcp(void)
 		}
 	}
 
-	if (IS_ENABLED(CONFIG_NET_UDP)) {
-		ret = process_udp();
-		if (ret < 0) {
-			return ret;
-		}
-	}
-
 	return 0;
 }
 
 static void stop_udp_and_tcp(void)
 {
 	LOG_INF("Stopping...");
-
-	if (IS_ENABLED(CONFIG_NET_UDP)) {
-		stop_udp();
-	}
 
 	if (IS_ENABLED(CONFIG_NET_TCP)) {
 		stop_tcp();
@@ -383,9 +365,6 @@ static void init_app(void)
 	net_mgmt_init_event_callback(&ipv6_mgmt_cb,
 				     ipv6_event_handler, IPV6_EVENT_MASK);
 	net_mgmt_add_event_callback(&ipv6_mgmt_cb);
-
-	init_vlan();
-	init_udp();
 }
 
 static void start_client(void *p1, void *p2, void *p3)
