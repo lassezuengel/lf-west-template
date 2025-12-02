@@ -113,71 +113,10 @@ static void event_handler(struct net_mgmt_event_callback *cb,
 
 static void init_app(void)
 {
-#if defined(CONFIG_USERSPACE)
-	struct k_mem_partition *parts[] = {
-#if Z_LIBC_PARTITION_EXISTS
-		&z_libc_partition,
-#endif
-		&app_partition
-	};
-
-	int ret = k_mem_domain_init(&app_domain, ARRAY_SIZE(parts), parts);
-
-	__ASSERT(ret == 0, "k_mem_domain_init() failed %d", ret);
-	ARG_UNUSED(ret);
-#endif
-
 	k_sem_init(&quit_lock, 0, K_SEM_MAX_LIMIT);
 
 	LOG_INF(APP_BANNER);
-
-#if defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)
-	int err;
-
-#if defined(CONFIG_NET_SAMPLE_CERTS_WITH_SC)
-	err = tls_credential_add(SERVER_CERTIFICATE_TAG,
-				 TLS_CREDENTIAL_CA_CERTIFICATE,
-				 ca_certificate,
-				 sizeof(ca_certificate));
-	if (err < 0) {
-		LOG_ERR("Failed to register CA certificate: %d", err);
-	}
-#endif /* defined(CONFIG_NET_SAMPLE_CERTS_WITH_SC) */
-
-	err = tls_credential_add(SERVER_CERTIFICATE_TAG,
-				 TLS_CREDENTIAL_SERVER_CERTIFICATE,
-				 server_certificate,
-				 sizeof(server_certificate));
-	if (err < 0) {
-		LOG_ERR("Failed to register public certificate: %d", err);
-	}
-
-
-	err = tls_credential_add(SERVER_CERTIFICATE_TAG,
-				 TLS_CREDENTIAL_PRIVATE_KEY,
-				 private_key, sizeof(private_key));
-	if (err < 0) {
-		LOG_ERR("Failed to register private key: %d", err);
-	}
-
-#if defined(CONFIG_MBEDTLS_KEY_EXCHANGE_PSK_ENABLED)
-	err = tls_credential_add(PSK_TAG,
-				TLS_CREDENTIAL_PSK,
-				psk,
-				sizeof(psk));
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK: %d", err);
-	}
-	err = tls_credential_add(PSK_TAG,
-				TLS_CREDENTIAL_PSK_ID,
-				psk_id,
-				sizeof(psk_id) - 1);
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK ID: %d", err);
-	}
-#endif /* defined(CONFIG_MBEDTLS_KEY_EXCHANGE_PSK_ENABLED) */
-#endif /* defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS) */
-
+	
 	if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
 		net_mgmt_init_event_callback(&mgmt_cb,
 					     event_handler, EVENT_MASK);

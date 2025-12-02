@@ -312,48 +312,6 @@ static void init_app(void)
 {
 	LOG_INF(APP_BANNER);
 
-#if defined(CONFIG_USERSPACE)
-	struct k_mem_partition *parts[] = {
-#if Z_LIBC_PARTITION_EXISTS
-		&z_libc_partition,
-#endif
-		&app_partition
-	};
-
-	int ret = k_mem_domain_init(&app_domain, ARRAY_SIZE(parts), parts);
-
-	__ASSERT(ret == 0, "k_mem_domain_init() failed %d", ret);
-	ARG_UNUSED(ret);
-#endif
-
-#if defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)
-	int err = tls_credential_add(CA_CERTIFICATE_TAG,
-				    TLS_CREDENTIAL_CA_CERTIFICATE,
-				    ca_certificate,
-				    sizeof(ca_certificate));
-	if (err < 0) {
-		LOG_ERR("Failed to register public certificate: %d", err);
-	}
-
-#if defined(CONFIG_MBEDTLS_KEY_EXCHANGE_PSK_ENABLED)
-	err = tls_credential_add(PSK_TAG,
-				TLS_CREDENTIAL_PSK,
-				psk,
-				sizeof(psk));
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK: %d", err);
-	}
-	err = tls_credential_add(PSK_TAG,
-				TLS_CREDENTIAL_PSK_ID,
-				psk_id,
-				sizeof(psk_id) - 1);
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK ID: %d", err);
-	}
-#endif /* defined(CONFIG_MBEDTLS_KEY_EXCHANGE_PSK_ENABLED) */
-#endif /* defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS) */
-
-
 	if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
 		net_mgmt_init_event_callback(&mgmt_cb,
 					     event_handler, EVENT_MASK);
