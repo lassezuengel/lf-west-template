@@ -74,3 +74,10 @@ print("Flashing server:", flash_server_cmd)
 run(flash_server_cmd)
 
 print("All done!")
+
+# -------------------------------------------------------------------
+# 6. Reset nodes
+# -------------------------------------------------------------------
+
+reset_nodes_cmd = "iotlab-node --reset"
+run(reset_nodes_cmd)
