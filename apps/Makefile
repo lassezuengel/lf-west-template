@@ -7,12 +7,12 @@ echo_clean:
 echo_build:
 	echo "Building echo client and server..."
 
-	cd HelloSocketsC && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
-	cd HelloSocketsS && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
+	cd echo_client && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
+	cd echo_server && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
 
 	mkdir echo_build
-	cp HelloSocketsC/build/zephyr/zephyr.elf echo_build/echo_client.elf
-	cp HelloSocketsS/build/zephyr/zephyr.elf echo_build/echo_server.elf
+	cp echo_client/build/zephyr/zephyr.elf echo_build/echo_client.elf
+	cp echo_server/build/zephyr/zephyr.elf echo_build/echo_server.elf
 
 echo_ssh:
 	echo "Transferring built files to remote server..."
