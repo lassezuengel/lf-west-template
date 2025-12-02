@@ -22,13 +22,6 @@ LOG_MODULE_DECLARE(net_echo_server_sample, LOG_LEVEL_DBG);
 
 #define MAX_CLIENT_QUEUE CONFIG_NET_SAMPLE_NUM_HANDLERS
 
-#if defined(CONFIG_NET_IPV4)
-K_THREAD_STACK_ARRAY_DEFINE(tcp4_handler_stack, CONFIG_NET_SAMPLE_NUM_HANDLERS,
-			    STACK_SIZE);
-static struct k_thread tcp4_handler_thread[CONFIG_NET_SAMPLE_NUM_HANDLERS];
-static APP_BMEM bool tcp4_handler_in_use[CONFIG_NET_SAMPLE_NUM_HANDLERS];
-#endif
-
 #if defined(CONFIG_NET_IPV6)
 K_THREAD_STACK_ARRAY_DEFINE(tcp6_handler_stack, CONFIG_NET_SAMPLE_NUM_HANDLERS,
 			    STACK_SIZE);
@@ -276,30 +269,6 @@ static int process_tcp(struct data *data)
 	}
 #endif
 
-#if defined(CONFIG_NET_IPV4)
-	if (client_addr.sin_family == AF_INET) {
-		tcp4_handler_in_use[slot] = true;
-
-		k_thread_create(
-			&tcp4_handler_thread[slot],
-			tcp4_handler_stack[slot],
-			K_THREAD_STACK_SIZEOF(tcp4_handler_stack[slot]),
-			handle_data,
-			INT_TO_POINTER(slot), data, &tcp4_handler_in_use[slot],
-			THREAD_PRIORITY,
-			IS_ENABLED(CONFIG_USERSPACE) ? K_USER |
-						       K_INHERIT_PERMS : 0,
-			K_NO_WAIT);
-
-		if (IS_ENABLED(CONFIG_THREAD_NAME)) {
-			char name[MAX_NAME_LEN];
-
-			snprintk(name, sizeof(name), "tcp4[%3d]", (uint8_t)slot);
-			k_thread_name_set(&tcp4_handler_thread[slot], name);
-		}
-	}
-#endif
-
 	return 0;
 }
 
@@ -445,24 +414,6 @@ void stop_tcp(void)
 #endif
 			if (conf.ipv6.tcp.accepted[i].sock >= 0) {
 				(void)close(conf.ipv6.tcp.accepted[i].sock);
-			}
-		}
-	}
-
-	if (IS_ENABLED(CONFIG_NET_IPV4)) {
-		k_thread_abort(tcp4_thread_id);
-		if (conf.ipv4.tcp.sock >= 0) {
-			(void)close(conf.ipv4.tcp.sock);
-		}
-
-		for (i = 0; i < CONFIG_NET_SAMPLE_NUM_HANDLERS; i++) {
-#if defined(CONFIG_NET_IPV4)
-			if (tcp4_handler_in_use[i] == true) {
-				k_thread_abort(&tcp4_handler_thread[i]);
-			}
-#endif
-			if (conf.ipv4.tcp.accepted[i].sock >= 0) {
-				(void)close(conf.ipv4.tcp.accepted[i].sock);
 			}
 		}
 	}
