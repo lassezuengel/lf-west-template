@@ -76,7 +76,7 @@ static int start_tcp(void);
 static int process_tcp_proto(struct sample_data *data);
 static void stop_tcp(void);
 
-static int start_udp_and_tcp(void) {
+static int start_tcp_and_fds(void) {
   LOG_INF("Starting...");
 
   int ret = start_tcp();
@@ -89,7 +89,7 @@ static int start_udp_and_tcp(void) {
   return 0;
 }
 
-static int run_udp_and_tcp(void) {
+static int run_tcp(void) {
   wait();
 
   int ret = process_tcp_proto(&conf.ipv6);
@@ -98,11 +98,6 @@ static int run_udp_and_tcp(void) {
   }
 
   return 0;
-}
-
-static void stop_udp_and_tcp(void) {
-  LOG_INF("Stopping...");
-  stop_tcp();
 }
 
 // Sets up network event handler for connection management.
@@ -149,10 +144,10 @@ static void start_client() {
   while (iterations == 0 || i < iterations) {
     k_sem_take(&run_app, K_FOREVER);
 
-    ret = start_udp_and_tcp();
+    ret = start_tcp_and_fds();
 
     while (connected && (ret == 0)) {
-      ret = run_udp_and_tcp();
+      ret = run_tcp();
 
       if (iterations > 0) {
         i++;
@@ -162,7 +157,7 @@ static void start_client() {
       }
     }
 
-    stop_udp_and_tcp();
+    stop_tcp();
   }
 }
 
@@ -312,6 +307,7 @@ static int start_tcp(void) {
 }
 
 static void stop_tcp(void) {
+  LOG_INF("Stopping...");
   if (conf.ipv6.tcp.sock >= 0) {
     (void)close(conf.ipv6.tcp.sock);
   }

@@ -36,16 +36,6 @@ void quit(void) {
   k_sem_give(&quit_lock);
 }
 
-static void start_udp_and_tcp(void) {
-  LOG_INF("Starting...");
-  start_tcp();
-}
-
-static void stop_udp_and_tcp(void) {
-  LOG_INF("Stopping...");
-  stop_tcp();
-}
-
 static void event_handler(struct net_mgmt_event_callback *cb,
                           uint32_t mgmt_event, struct net_if *iface) {
   ARG_UNUSED(iface);
@@ -83,10 +73,9 @@ static void event_handler(struct net_mgmt_event_callback *cb,
   }
 }
 
-static void init_app(void) {
+static void init_connection_manager(void) {
   k_sem_init(&quit_lock, 0, K_SEM_MAX_LIMIT);
 
-  LOG_INF(APP_BANNER);
 
   if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
     net_mgmt_init_event_callback(&mgmt_cb,
@@ -94,44 +83,24 @@ static void init_app(void) {
     net_mgmt_add_event_callback(&mgmt_cb);
 
     conn_mgr_mon_resend_status();
-  }
-}
-
-static int cmd_sample_quit(const struct shell *sh,
-                           size_t argc, char *argv[]) {
-  want_to_quit = true;
-
-  conn_mgr_mon_resend_status();
-
-  quit();
-
-  return 0;
-}
-
-SHELL_STATIC_SUBCMD_SET_CREATE(sample_commands,
-                               SHELL_CMD(quit, NULL,
-                                         "Quit the sample application\n",
-                                         cmd_sample_quit),
-                               SHELL_SUBCMD_SET_END);
-
-SHELL_CMD_REGISTER(sample, &sample_commands,
-                   "Sample application commands", NULL);
-
-int main(void) {
-  init_app();
-
-  if (!IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
+  } else {
     k_sem_give(&run_app);
   }
+}
+
+int main(void) {
+  LOG_INF(APP_BANNER);
+
+  init_connection_manager();
 
   k_sem_take(&run_app, K_FOREVER);
 
-  start_udp_and_tcp();
+  start_tcp();
 
   k_sem_take(&quit_lock, K_FOREVER);
 
   if (connected) {
-    stop_udp_and_tcp();
+    stop_tcp();
   }
   return 0;
 }
@@ -353,27 +322,8 @@ static void process_tcp6(void) {
   quit();
 }
 
-static void print_stats(struct k_work *work) {
-  struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-  struct data *data = CONTAINER_OF(dwork, struct data, tcp.stats_print);
-  int total_received = atomic_get(&data->tcp.bytes_received);
-
-  if (total_received) {
-    if ((total_received / STATS_TIMER) < 1024) {
-      LOG_INF("%s TCP: Received %d B/sec", data->proto,
-              total_received / STATS_TIMER);
-    } else {
-      LOG_INF("%s TCP: Received %d KiB/sec", data->proto,
-              total_received / 1024 / STATS_TIMER);
-    }
-
-    atomic_set(&data->tcp.bytes_received, 0);
-  }
-
-  k_work_reschedule(&data->tcp.stats_print, K_SECONDS(STATS_TIMER));
-}
-
 void start_tcp(void) {
+  LOG_INF("Starting...");
   int i;
 
   for (i = 0; i < CONFIG_NET_SAMPLE_NUM_HANDLERS; i++) {
@@ -381,12 +331,11 @@ void start_tcp(void) {
     tcp6_handler_in_use[i] = false;
   }
 
-  k_work_init_delayable(&conf.ipv6.tcp.stats_print, print_stats);
   k_thread_start(tcp6_thread_id);
-  k_work_reschedule(&conf.ipv6.tcp.stats_print, K_SECONDS(STATS_TIMER));
 }
 
 void stop_tcp(void) {
+  LOG_INF("Stopping...");
   int i;
 
   k_thread_abort(tcp6_thread_id);
