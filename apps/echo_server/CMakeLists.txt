@@ -19,7 +19,6 @@ if(CONFIG_NET_SOCKETS_SOCKOPT_TLS AND
 endif()
 
 target_sources(                     app PRIVATE src/echo-server.c)
-target_sources_ifdef(CONFIG_NET_TCP app PRIVATE src/tcp.c)
 target_sources_ifdef(CONFIG_NET_L2_IPIP app PRIVATE src/tunnel.c)
 
 if (CONFIG_USB_DEVICE_STACK)

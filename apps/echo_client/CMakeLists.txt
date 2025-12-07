@@ -19,7 +19,6 @@ if(CONFIG_NET_SOCKETS_SOCKOPT_TLS AND
 endif()
 
 target_sources(                     app PRIVATE src/echo-client.c)
-target_sources_ifdef(CONFIG_NET_TCP app PRIVATE src/tcp.c)
 
 include(${ZEPHYR_BASE}/samples/net/common/common.cmake)
 

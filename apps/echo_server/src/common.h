@@ -39,14 +39,6 @@ struct data {
 
 	struct {
 		int sock;
-		char recv_buffer[RECV_BUFFER_SIZE];
-		uint32_t counter;
-		atomic_t bytes_received;
-		struct k_work_delayable stats_print;
-	} udp;
-
-	struct {
-		int sock;
 		atomic_t bytes_received;
 		struct k_work_delayable stats_print;
 
@@ -59,59 +51,10 @@ struct data {
 };
 
 struct configs {
-	struct data ipv4;
 	struct data ipv6;
 };
 
 extern struct configs conf;
 
-void start_udp(void);
-void stop_udp(void);
-
-void start_tcp(void);
-void stop_tcp(void);
-
-void quit(void);
-
-#if defined(CONFIG_NET_VLAN)
-int init_vlan(void);
-#else
-static inline int init_vlan(void)
-{
-	return 0;
-}
-#endif /* CONFIG_NET_VLAN */
-
-#if defined(CONFIG_NET_SAMPLE_WEBSOCKET_CONSOLE)
-int init_ws(void);
-#else
-static inline int init_ws(void)
-{
-	return 0;
-}
-#endif /* CONFIG_NET_SAMPLE_WEBSOCKET_CONSOLE */
-
-#if defined(CONFIG_NET_L2_IPIP)
-int init_tunnel(void);
-bool is_tunnel(struct net_if *iface);
-#else
-static inline int init_tunnel(void)
-{
-	return 0;
-}
-
-static inline bool is_tunnel(struct net_if *iface)
-{
-	ARG_UNUSED(iface);
-	return false;
-}
-#endif /* CONFIG_NET_L2_IPIP */
-
-#if defined(CONFIG_USB_DEVICE_STACK) || defined(CONFIG_USB_DEVICE_STACK_NEXT)
-int init_usb(void);
-#else
-static inline int init_usb(void)
-{
-	return 0;
-}
-#endif /* CONFIG_USB_DEVICE_STACK */
+static void start_tcp(void);
+static void stop_tcp(void);

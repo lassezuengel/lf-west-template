@@ -34,24 +34,8 @@ extern struct k_mem_domain app_domain;
 #define THREAD_PRIORITY K_PRIO_COOP(CONFIG_NUM_COOP_PRIORITIES - 1)
 #endif
 
-#define UDP_STACK_SIZE 2048
-
-struct udp_control {
-	struct k_poll_signal tx_signal;
-	struct k_timer tx_timer;
-	struct k_timer rx_timer;
-};
-
 struct sample_data {
 	const char *proto;
-
-	struct {
-		int sock;
-		uint32_t expecting;
-		uint32_t counter;
-		uint32_t mtu;
-		struct udp_control *ctrl;
-	} udp;
 
 	struct {
 		int sock;
@@ -62,13 +46,8 @@ struct sample_data {
 };
 
 struct configs {
-	struct sample_data ipv4;
 	struct sample_data ipv6;
 };
-
-#if !defined(CONFIG_NET_CONFIG_PEER_IPV4_ADDR)
-#define CONFIG_NET_CONFIG_PEER_IPV4_ADDR ""
-#endif
 
 #if !defined(CONFIG_NET_CONFIG_PEER_IPV6_ADDR)
 #define CONFIG_NET_CONFIG_PEER_IPV6_ADDR ""
@@ -77,31 +56,3 @@ struct configs {
 extern const char lorem_ipsum[];
 extern const int ipsum_len;
 extern struct configs conf;
-
-#if defined(CONFIG_NET_UDP)
-/* init_udp initializes kernel objects, hence it has to be called from
- * supervisor thread.
- */
-void init_udp(void);
-int start_udp(void);
-int process_udp(void);
-void stop_udp(void);
-#else
-static inline void init_udp(void) { }
-static inline int start_udp(void) { return 0; }
-static inline int process_udp(void) { return 0; }
-static inline void stop_udp(void) { }
-#endif /* defined(CONFIG_NET_UDP) */
-
-int start_tcp(void);
-int process_tcp(void);
-void stop_tcp(void);
-
-#if defined(CONFIG_NET_VLAN)
-int init_vlan(void);
-#else
-static inline int init_vlan(void)
-{
-	return 0;
-}
-#endif
