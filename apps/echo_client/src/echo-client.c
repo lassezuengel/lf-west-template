@@ -41,6 +41,7 @@ K_SEM_DEFINE(run_app, 0, 1);
 
 static struct net_mgmt_event_callback mgmt_cb;
 
+// Prepares the fds for polling.
 static void prepare_fds(void) {
   nfds = 0;
 
@@ -55,6 +56,7 @@ static void prepare_fds(void) {
   }
 }
 
+// Waits for events on the prepared fds.
 static void wait(void) {
   int ret;
 
@@ -123,6 +125,7 @@ static void event_handler(struct net_mgmt_event_callback *cb,
   }
 }
 
+// Initializes network manager and connection event callback.
 static void init_network_manager(void) {
   if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
     net_mgmt_init_event_callback(&mgmt_cb,
@@ -225,6 +228,7 @@ static int compare_tcp_data(struct sample_data *data, const char *buf, uint32_t 
   return 0;
 }
 
+// Starts TCP connection to the given address and port.
 static int start_tcp_proto(struct sample_data *data, sa_family_t family,
                            struct sockaddr *addr, socklen_t addrlen) {
   int ret;
@@ -287,6 +291,7 @@ static int process_tcp_proto(struct sample_data *data) {
   return ret;
 }
 
+// Starts TCP connection to the server and kicks off data exchange.
 static int start_tcp(void) {
   int ret = 0;
   struct sockaddr_in6 addr6;
@@ -303,6 +308,8 @@ static int start_tcp(void) {
     return ret;
   }
 
+  // Kick off the data exchange by sending
+  // the first chunk of data to the server.
   return send_tcp_data(&conf.ipv6);
 }
 
