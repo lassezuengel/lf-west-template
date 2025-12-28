@@ -136,6 +136,7 @@ static ssize_t sendall(int sock, const void *buf, size_t len) {
   return 0;
 }
 
+// Creates and binds TCP listening socket.
 static int start_tcp_proto(struct data *data,
                            struct sockaddr *bind_addr,
                            socklen_t bind_addrlen) {
@@ -236,6 +237,7 @@ static void handle_data(void *ptr1, void *ptr2, void *ptr3) {
   data->tcp.accepted[slot].sock = -1;
 }
 
+/// Finds a free data handler slot.
 static int get_free_slot(struct data *data) {
   int i;
 
@@ -307,16 +309,9 @@ static void process_tcp6(void) {
 
   ret = start_tcp_proto(&conf.ipv6, (struct sockaddr *)&addr6,
                         sizeof(addr6));
-  if (ret < 0) {
-    quit();
-    return;
-  }
 
   while (ret == 0) {
     ret = process_tcp(&conf.ipv6);
-    if (ret != 0) {
-      break;
-    }
   }
 
   quit();
