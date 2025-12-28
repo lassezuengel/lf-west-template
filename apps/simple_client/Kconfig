@@ -1,0 +1,15 @@
+# Private config options for echo-client sample app
+
+# Copyright (c) 2018 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Networking echo-client sample application"
+
+config NET_SAMPLE_SEND_ITERATIONS
+	int "Send sample data this many times"
+	default 0
+	help
+	  Send sample data this many times before exiting. A value of
+	  zero means that the sample application is run forever.
+
+source "Kconfig.zephyr"
