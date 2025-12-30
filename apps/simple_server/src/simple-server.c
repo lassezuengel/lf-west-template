@@ -20,7 +20,7 @@ static struct k_sem quit_lock;
 static struct net_mgmt_event_callback mgmt_cb;
 static bool connected;
 K_SEM_DEFINE(run_app, 0, 1);
-static bool want_to_quit;
+static bool want_to_quit = false;
 
 K_THREAD_DEFINE(tcp6_thread_id, STACK_SIZE,
                 start_tcp, NULL, NULL, NULL,
@@ -88,7 +88,8 @@ int main(void) {
 
   k_sem_take(&run_app, K_FOREVER);
 
-  k_thread_start(tcp6_thread_id);
+  // k_thread_start(tcp6_thread_id);
+  start_tcp();
 
   k_sem_take(&quit_lock, K_FOREVER);
 
@@ -154,6 +155,8 @@ void start_tcp() {
   (void)memset(&addr6, 0, sizeof(addr6));
   addr6.sin6_family = AF_INET6;
   addr6.sin6_port   = htons(4242);
+
+  inet_pton(AF_INET6, CONFIG_NET_CONFIG_MY_IPV6_ADDR, &addr6.sin6_addr);
 
   if(start_tcp_proto(&conf, (struct sockaddr *)&addr6, sizeof(addr6)) < 0) {
     LOG_ERR("Failed to start TCP server");
