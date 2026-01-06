@@ -75,14 +75,14 @@ static int slip_process_byte(unsigned char c)
 {
 	struct net_buf *buf;
 #ifdef VERBOSE_DEBUG
-	LOG_DBG("recv: state %u byte %x", slip_state, c);
+	LOG_INF("recv: state %u byte %x", slip_state, c);
 #endif
 	switch (slip_state) {
 	case STATE_GARBAGE:
 		if (c == SLIP_END) {
 			slip_state = STATE_OK;
 		}
-		LOG_DBG("garbage: discard byte %x", c);
+		LOG_INF("garbage: discard byte %x", c);
 		return 0;
 
 	case STATE_ESC:
@@ -108,7 +108,7 @@ static int slip_process_byte(unsigned char c)
 	}
 
 #ifdef VERBOSE_DEBUG
-	LOG_DBG("processed: state %u byte %x", slip_state, c);
+	LOG_INF("processed: state %u byte %x", slip_state, c);
 #endif
 
 	if (!pkt_curr) {
@@ -154,11 +154,11 @@ static void interrupt_handler(const struct device *dev, void *user_data)
 				 * packet
 				 */
 				if (!pkt_curr) {
-					LOG_DBG("Skip SLIP_END");
+					LOG_INF("Skip SLIP_END");
 					continue;
 				}
 
-				LOG_DBG("Full packet %p, len %u", pkt_curr,
+				LOG_INF("Full packet %p, len %u", pkt_curr,
 					net_pkt_get_len(pkt_curr));
 
 				k_fifo_put(&rx_queue, pkt_curr);
@@ -176,11 +176,11 @@ static void send_data(uint8_t *cfg, uint8_t *data, size_t len)
 	pkt = net_pkt_alloc_with_buffer(NULL, len + 5,
 					AF_UNSPEC, 0, K_NO_WAIT);
 	if (!pkt) {
-		LOG_DBG("No pkt available");
+		LOG_INF("No pkt available");
 		return;
 	}
 
-	LOG_DBG("queue pkt %p len %u", pkt, len);
+	LOG_INF("queue pkt %p len %u", pkt, len);
 
 	/* Add configuration id */
 	net_pkt_write(pkt, cfg, 2);
@@ -201,7 +201,7 @@ static void get_ieee_addr(void)
 	uint8_t cfg[2] = { '!', 'M' };
 	uint8_t mac[8];
 
-	LOG_DBG("");
+	LOG_INF("");
 
 	/* Send in BE */
 	sys_memcpy_swap(mac, mac_addr, sizeof(mac));
@@ -245,7 +245,7 @@ static void process_data(struct net_pkt *pkt)
 	seq = net_buf_pull_u8(buf);
 	num_attr = net_buf_pull_u8(buf);
 
-	LOG_DBG("seq %u num_attr %u", seq, num_attr);
+	LOG_INF("seq %u num_attr %u", seq, num_attr);
 
 	/**
 	 * There are some attributes sent over this protocol
@@ -275,7 +275,7 @@ static void process_data(struct net_pkt *pkt)
 
 static void set_channel(uint8_t chan)
 {
-	LOG_DBG("Set channel %u", chan);
+	LOG_INF("Set channel %u", chan);
 
 	radio_api->set_channel(ieee802154_dev, chan);
 }
@@ -285,7 +285,7 @@ static void process_config(struct net_pkt *pkt)
 	struct net_buf *buf = net_buf_frag_last(pkt->buffer);
 	uint8_t cmd = net_buf_pull_u8(buf);
 
-	LOG_DBG("Process config %c", cmd);
+	LOG_INF("Process config %c", cmd);
 
 	switch (cmd) {
 	case 'S':
@@ -305,7 +305,7 @@ static void rx_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
-	LOG_DBG("RX thread started");
+	LOG_INF("RX thread started");
 
 	while (true) {
 		struct net_pkt *pkt;
@@ -315,7 +315,7 @@ static void rx_thread(void *p1, void *p2, void *p3)
 		pkt = k_fifo_get(&rx_queue, K_FOREVER);
 		buf = net_buf_frag_last(pkt->buffer);
 
-		LOG_DBG("rx_queue pkt %p buf %p", pkt, buf);
+		LOG_INF("rx_queue pkt %p buf %p", pkt, buf);
 
 		LOG_HEXDUMP_DBG(buf->data, buf->len, "SLIP >");
 
@@ -396,7 +396,7 @@ static void tx_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
-	LOG_DBG("TX thread started");
+	LOG_INF("TX thread started");
 
 	while (true) {
 		struct net_pkt *pkt;
@@ -407,7 +407,7 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		buf = net_buf_frag_last(pkt->buffer);
 		len = net_pkt_get_len(pkt);
 
-		LOG_DBG("Send pkt %p buf %p len %d", pkt, buf, len);
+		LOG_INF("Send pkt %p buf %p len %d", pkt, buf, len);
 
 		LOG_HEXDUMP_DBG(buf->data, buf->len, "SLIP <");
 
@@ -520,7 +520,7 @@ static bool init_ieee802154(void)
 
 int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 {
-	LOG_DBG("Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
+	LOG_INF("Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
 
 	k_fifo_put(&tx_queue, pkt);
 
@@ -537,20 +537,24 @@ int main(void)
 	uint32_t baudrate, dtr = 0U;
 	int ret;
 
-	LOG_INF("Starting wpan_serial application");
+	LOG_INF("Starting wpan_serial application...");
 
+	LOG_INF("Checking readiness of CDC ACM UART device %s...",
+		uart_dev->name);
 	if (!device_is_ready(uart_dev)) {
 		LOG_ERR("CDC ACM device not ready");
 		return 0;
 	}
 
+	LOG_INF("Trying to enable USB...");
 	ret = usb_enable(NULL);
 	if (ret != 0) {
 		LOG_ERR("Failed to enable USB");
 		return 0;
 	}
 
-	LOG_DBG("Wait for DTR");
+#if 0
+	LOG_INF("Waiting for DTR..");
 
 	while (1) {
 		uart_line_ctrl_get(uart_dev, UART_LINE_CTRL_DTR, &dtr);
@@ -562,13 +566,16 @@ int main(void)
 		}
 	}
 
-	LOG_DBG("DTR set, continue");
+	LOG_INF("DTR set, continue");
+#else
+	LOG_INF("Skipping DTR wait");
+#endif
 
 	ret = uart_line_ctrl_get(uart_dev, UART_LINE_CTRL_BAUD_RATE, &baudrate);
 	if (ret) {
 		LOG_WRN("Failed to get baudrate, ret code %d", ret);
 	} else {
-		LOG_DBG("Baudrate detected: %d", baudrate);
+		LOG_INF("Baudrate detected: %d", baudrate);
 	}
 
 	LOG_INF("USB serial initialized");

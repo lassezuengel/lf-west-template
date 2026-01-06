@@ -155,6 +155,7 @@ static void start_client() {
 
 int main(void) {
   LOG_INF(APP_BANNER);
+  printk("What's up? Client running!\n");
 
   init_network_manager();
 
@@ -226,6 +227,7 @@ static int process_tcp_proto() {
       LOG_INF("%s TCP: Exchanged %u packets", conf.proto,
               conf.counter);
     }
+    printk("Sending stuff!\n");
 
     k_msleep(100);
 
