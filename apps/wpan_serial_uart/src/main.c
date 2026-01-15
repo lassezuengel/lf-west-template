@@ -73,12 +73,12 @@ void print_uart_pins(void)
     uint32_t txd_pin = uarte->PSEL.TXD;
     uint32_t rxd_pin = uarte->PSEL.RXD;
 
-    LOG_INF("=== ACTUAL UART0 PIN CONFIGURATION ===");
+    LOG_INF("=== UART0 PIN CONFIGURATION ===");
     LOG_INF("TXD: P%d.%d (register: 0x%08x)",
             (txd_pin >> 5) & 0x1, txd_pin & 0x1F, txd_pin);
     LOG_INF("RXD: P%d.%d (register: 0x%08x)",
             (rxd_pin >> 5) & 0x1, rxd_pin & 0x1F, rxd_pin);
-    LOG_INF("======================================");
+    LOG_INF("===============================");
 }
 
 /* SLIP state machine */
@@ -152,6 +152,10 @@ static int slip_process_byte(unsigned char c)
 	return 0;
 }
 
+static K_SEM_DEFINE(tx_sem, 0, 1);
+static uint8_t *tx_data_ptr = NULL;
+static uint16_t tx_data_len = 0;
+
 static void interrupt_handler(const struct device *dev, void *user_data)
 {
 	ARG_UNUSED(user_data);
@@ -159,30 +163,68 @@ static void interrupt_handler(const struct device *dev, void *user_data)
 	while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
 		unsigned char byte;
 
-		if (!uart_irq_rx_ready(dev)) {
-			continue;
+		/* Handle RX */
+		if (uart_irq_rx_ready(dev)) {
+			while (uart_fifo_read(dev, &byte, sizeof(byte))) {
+				if (slip_process_byte(byte)) {
+					if (!pkt_curr) {
+						LOG_INF("Skip SLIP_END");
+						continue;
+					}
+
+					LOG_INF("from SERIAL: Full packet %p, len %u", pkt_curr,
+						net_pkt_get_len(pkt_curr));
+
+					k_fifo_put(&rx_queue, pkt_curr);
+					pkt_curr = NULL;
+				}
+			}
 		}
 
-		while (uart_fifo_read(dev, &byte, sizeof(byte))) {
-			if (slip_process_byte(byte)) {
-				/**
-				 * slip_process_byte() returns 1 on
-				 * SLIP_END, even after receiving full
-				 * packet
-				 */
-				if (!pkt_curr) {
-					LOG_INF("Skip SLIP_END");
-					continue;
+		/* Handle TX */
+		if (uart_irq_tx_ready(dev)) {
+			if (tx_data_ptr && tx_data_len > 0) {
+				int wrote = uart_fifo_fill(dev, tx_data_ptr, tx_data_len);
+				if (wrote > 0) {
+					tx_data_ptr += wrote;
+					tx_data_len -= wrote;
 				}
 
-				LOG_INF("Full packet %p, len %u", pkt_curr,
-					net_pkt_get_len(pkt_curr));
-
-				k_fifo_put(&rx_queue, pkt_curr);
-				pkt_curr = NULL;
+				if (tx_data_len == 0) {
+					/* Transmission complete */
+					uart_irq_tx_disable(dev);
+					tx_data_ptr = NULL;
+					k_sem_give(&tx_sem);
+				}
+			} else {
+				uart_irq_tx_disable(dev);
 			}
 		}
 	}
+}
+
+static int try_write(uint8_t *data, uint16_t len)
+{
+	int ret;
+
+	/* Set up transmission */
+	tx_data_ptr = data;
+	tx_data_len = len;
+
+	/* Enable TX interrupt */
+	uart_irq_tx_enable(uart_dev);
+
+	/* Wait for transmission to complete (with timeout) */
+	ret = k_sem_take(&tx_sem, K_MSEC(1000));
+	if (ret < 0) {
+		LOG_ERR("TX timeout");
+		uart_irq_tx_disable(uart_dev);
+		tx_data_ptr = NULL;
+		tx_data_len = 0;
+		return -ETIMEDOUT;
+	}
+
+	return 0;
 }
 
 /* Allocate and send data to UART */
@@ -262,7 +304,7 @@ static void process_data(struct net_pkt *pkt)
 	seq = net_buf_pull_u8(buf);
 	num_attr = net_buf_pull_u8(buf);
 
-	LOG_INF("seq %u num_attr %u", seq, num_attr);
+	LOG_INF("from SERIAL to RADIO: seq %u num_attr %u", seq, num_attr);
 
 	/**
 	 * There are some attributes sent over this protocol
@@ -332,7 +374,7 @@ static void rx_thread(void *p1, void *p2, void *p3)
 		pkt = k_fifo_get(&rx_queue, K_FOREVER);
 		buf = net_buf_frag_last(pkt->buffer);
 
-		LOG_INF("rx_queue pkt %p buf %p", pkt, buf);
+		LOG_INF("from SERIAL: rx_queue pkt %p buf %p", pkt, buf);
 
 		LOG_HEXDUMP_DBG(buf->data, buf->len, "SLIP >");
 
@@ -387,22 +429,22 @@ static size_t slip_buffer(uint8_t *sbuf, struct net_buf *buf)
 	return sbuf - sbuf_orig;
 }
 
-static int try_write(uint8_t *data, uint16_t len)
-{
-	int wrote;
+// static int try_write(uint8_t *data, uint16_t len)
+// {
+// 	int wrote;
 
-	while (len) {
-		wrote = uart_fifo_fill(uart_dev, data, len);
-		if (wrote <= 0) {
-			return wrote;
-		}
+// 	while (len) {
+// 		wrote = uart_fifo_fill(uart_dev, data, len);
+// 		if (wrote <= 0) {
+// 			return -EIO;
+// 		}
 
-		len -= wrote;
-		data += wrote;
-	}
+// 		len -= wrote;
+// 		data += wrote;
+// 	}
 
-	return 0;
-}
+// 	return 0;
+// }
 
 /**
  * TX - transmit to SLIP interface
@@ -424,7 +466,7 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		buf = net_buf_frag_last(pkt->buffer);
 		len = net_pkt_get_len(pkt);
 
-		LOG_INF("Send pkt %p buf %p len %d", pkt, buf, len);
+		LOG_INF("from RADIO to SERIAL: Send pkt %p buf %p len %d", pkt, buf, len);
 
 		LOG_HEXDUMP_DBG(buf->data, buf->len, "SLIP <");
 
@@ -434,7 +476,9 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		/* SLIP encode and send */
 		len = slip_buffer(slip_buf, buf);
 
-		try_write(slip_buf, len);
+		if(try_write(slip_buf, len) < 0) {
+			LOG_ERR("Error writing to UART");
+		}
 
 		net_pkt_unref(pkt);
 	}
@@ -537,7 +581,7 @@ static bool init_ieee802154(void)
 
 int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 {
-	LOG_INF("Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
+	LOG_INF("from RADIO: Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
 
 	k_fifo_put(&tx_queue, pkt);
 

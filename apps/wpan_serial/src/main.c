@@ -520,7 +520,7 @@ static bool init_ieee802154(void)
 
 int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 {
-	LOG_INF("Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
+	LOG_INF("from RADIO: Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
 
 	k_fifo_put(&tx_queue, pkt);
 
@@ -553,7 +553,7 @@ int main(void)
 		return 0;
 	}
 
-#if 0
+#if 1
 	LOG_INF("Waiting for DTR..");
 
 	while (1) {
