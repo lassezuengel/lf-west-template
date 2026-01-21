@@ -50,3 +50,30 @@ simple_ssh:
 		&& scp echo_server.elf zungel@saclay.iot-lab.info:~
 
 	scp run_experiment.py zungel@saclay.iot-lab.info:~
+
+# ...
+
+udp_all: udp_clean udp_build udp_ssh
+
+udp_clean:
+	echo "Cleaning previous builds..."
+	rm -r -f udp_build/
+
+udp_build:
+	echo "Building echo client and server..."
+
+	cd udp_client && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
+	cd udp_server && west build -p -b nrf52840dk/nrf52840 . -- -DOVERLAY_CONFIG=overlay-802154.conf
+
+	mkdir udp_build
+	cp udp_client/build/zephyr/zephyr.elf udp_build/echo_client.elf
+	cp udp_server/build/zephyr/zephyr.elf udp_build/echo_server.elf
+
+udp_ssh:
+	echo "Transferring built files to remote server..."
+
+	cd udp_build \
+		&& scp echo_client.elf zungel@saclay.iot-lab.info:~ \
+		&& scp echo_server.elf zungel@saclay.iot-lab.info:~
+
+	scp run_experiment.py zungel@saclay.iot-lab.info:~

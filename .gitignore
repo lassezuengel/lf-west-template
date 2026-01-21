@@ -14,7 +14,8 @@ deps/
 **/src-gen/
 **/fed-gen/
 **/include/
-
+**/simple_build/
+**/udp_build/
 .vscode
 
 zephyr-tests/
