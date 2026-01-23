@@ -139,6 +139,20 @@ struct data conf = {
   .udp_sock = -1,
 };
 
+static ssize_t sendall(const void *buf, size_t len, struct sockaddr *addr, socklen_t addrlen) {
+  while (len) {
+    ssize_t out_len = sendto(conf.udp_sock, buf, len, 0, addr, addrlen);
+
+    if (out_len < 0) {
+      return out_len;
+    }
+    buf = (const char *)buf + out_len;
+    len -= out_len;
+  }
+
+  return 0;
+}
+
 void start_udp() {
   struct sockaddr_in6 addr6;
 
@@ -155,19 +169,45 @@ void start_udp() {
 
   LOG_INF("UDP server started on port %d", ntohs(addr6.sin6_port));
 
+  struct sockaddr_in6 client_addr6;
+
+  size_t count = 0;
+
   while(true) {
     char buffer[128];
-    ssize_t recv_len = recv(conf.udp_sock, buffer, sizeof(buffer) - 1, 0);
+    ssize_t recv_len = recvfrom(conf.udp_sock, buffer, sizeof(buffer) - 1, 0,
+                                (struct sockaddr *)&client_addr6, &(socklen_t){ sizeof(client_addr6) });
 
     if (recv_len < 0) {
       LOG_ERR("Receive error: %d", -errno);
-      break;
+      continue;
     }
 
     LOG_INF("Received %d bytes: %.*s", recv_len, (int)recv_len, buffer);
+
+    if(++count % 10 == 0) {
+      LOG_INF("Processed %d packets so far, simulating packet loss (no response sent)", (int)count);
+    } else {
+      char message[] = "Okay";
+      ssize_t sent_len = sendall(message, sizeof(message), (struct sockaddr *)&client_addr6, sizeof(client_addr6));
+
+      if (sent_len < 0) {
+        LOG_ERR("Send error: %d", -errno);
+        continue;
+      }
+
+      char addr_str_client[NET_IPV6_ADDR_LEN];
+      LOG_INF("Sent %d bytes response to %s",
+            (int)sizeof(message),
+            net_addr_ntop(AF_INET6, &client_addr6.sin6_addr, addr_str_client, sizeof(addr_str_client)));
+    }
   }
 }
 
 void stop_udp() {
   LOG_INF("Stopping UDP server");
+  if (conf.udp_sock >= 0) {
+    close(conf.udp_sock);
+    conf.udp_sock = -1;
+  }
 }

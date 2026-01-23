@@ -8,6 +8,7 @@ LOG_MODULE_REGISTER(net_udp_client_sample, LOG_LEVEL_DBG);
 #include <zephyr/kernel.h>
 
 #include <zephyr/posix/sys/eventfd.h>
+#include <zephyr/posix/poll.h>
 
 #include <zephyr/net/conn_mgr_monitor.h>
 #include <zephyr/net/net_event.h>
@@ -127,16 +128,43 @@ static int process_udp_proto(struct sockaddr *addr, socklen_t addrlen) {
       LOG_INF("%s TCP: Exchanged %u packets", conf.proto,
               conf.counter);
     }
-    printk("Sending stuff!\n");
+    k_msleep(2000);
 
-    k_msleep(3000);
-
+    LOG_INF("Sending stuff!");
     ret = sendall(lorem_ipsum, 12, addr, addrlen);
     if (ret < 0) {
       LOG_ERR("%s UDP: Failed to send data, errno %d", conf.proto,
               errno);
-      break;
+      continue;
     }
+
+    char recv_buf[RECV_BUF_SIZE];
+    size_t recv_buf_size = sizeof(recv_buf);
+
+    // Use poll for 2 second timeout
+    struct pollfd fds[1];
+    fds[0].fd = conf.udp_sock;
+    fds[0].events = POLLIN;
+
+    ret = poll(fds, 1, 1000); // 1000ms = 1 second
+    if (ret < 0) {
+      LOG_ERR("Poll failed: %d", -errno);
+      return -errno;
+    } else if (ret == 0) {
+      LOG_WRN("Timeout: No response received");
+      continue;
+    }
+
+    // Receive response
+    ret = recv(conf.udp_sock, recv_buf, recv_buf_size - 1, 0);
+
+    if (ret < 0) {
+      LOG_ERR("Receive failed: %d", -errno);
+      continue;
+    }
+
+    recv_buf[ret] = '\0'; // Null-terminate the received string
+    LOG_INF("Received %d bytes: %s", ret, recv_buf);
   }
 
   return ret;
@@ -154,6 +182,8 @@ static int start_udp_proto(sa_family_t family,
     return -errno;
   }
 
+  // We connect to the server address so that we only see traffic from it
+  // and TODO: can use send() and recv() instead of sendto() and recvfrom().
   ret = connect(conf.udp_sock, addr, addrlen);
   if (ret < 0) {
     LOG_ERR("Cannot connect to UDP remote (%s): %d", conf.proto,
