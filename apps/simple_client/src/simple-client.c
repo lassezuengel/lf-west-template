@@ -223,13 +223,13 @@ static int process_tcp_proto() {
   char buf[RECV_BUF_SIZE];
 
   do {
-    if (++conf.counter % 1000 == 0U) {
+    if (++conf.counter % 20 == 0U) {
       LOG_INF("%s TCP: Exchanged %u packets", conf.proto,
               conf.counter);
     }
     printk("Sending stuff!\n");
 
-    k_msleep(100);
+    k_msleep(3000);
 
     ret = send_tcp_data();
     if (ret < 0) {
