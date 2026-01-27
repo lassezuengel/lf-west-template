@@ -17,6 +17,7 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(wpan_serial, LOG_LEVEL_INF);
 
+#include <nrf_802154.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
@@ -35,6 +36,14 @@ LOG_MODULE_REGISTER(wpan_serial, LOG_LEVEL_INF);
 #define SLIP_ESC     0333
 #define SLIP_ESC_END 0334
 #define SLIP_ESC_ESC 0335
+
+#define ENABLE_PROMISCUOUS_MODE 0
+
+#define ANALYZE_UART_BOTTLENECK 0
+#if ANALYZE_UART_BOTTLENECK
+	static atomic_t packets_received = ATOMIC_INIT(0);
+	static atomic_t packets_sent = ATOMIC_INIT(0);
+#endif
 
 enum slip_state {
 	STATE_GARBAGE,
@@ -195,6 +204,9 @@ static void interrupt_handler(const struct device *dev, void *user_data)
 					uart_irq_tx_disable(dev);
 					tx_data_ptr = NULL;
 					k_sem_give(&tx_sem);
+#if ANALYZE_UART_BOTTLENECK
+					LOG_INF("TX complete for packet\n");
+#endif
 				}
 			} else {
 				uart_irq_tx_disable(dev);
@@ -481,6 +493,16 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		}
 
 		net_pkt_unref(pkt);
+
+		#if ANALYZE_UART_BOTTLENECK
+			uint32_t sent_count = atomic_inc(&packets_sent);
+			uint32_t recv_count = atomic_get(&packets_received);
+
+			if (sent_count % 10 == 0) {  // Log every 10 packets
+				LOG_INF("Stats: received=%u, sent=%u, lag=%d",
+								recv_count, sent_count, (int)(recv_count - sent_count));
+			}
+		#endif
 	}
 }
 
@@ -542,19 +564,20 @@ static bool init_ieee802154(void)
 		struct ieee802154_filter filter;
 		uint16_t short_addr;
 
+		// TODO: Do we need this?
 		/* Set short address */
-		short_addr = (mac_addr[0] << 8) + mac_addr[1];
-		filter.short_addr = short_addr;
+		// short_addr = (mac_addr[0] << 8) + mac_addr[1];
+		// filter.short_addr = short_addr;
 
-		radio_api->filter(ieee802154_dev, true,
-				  IEEE802154_FILTER_TYPE_SHORT_ADDR,
-				  &filter);
+		// radio_api->filter(ieee802154_dev, true,
+		// 		  IEEE802154_FILTER_TYPE_SHORT_ADDR,
+		// 		  &filter);
 
-		/* Set ieee address */
-		filter.ieee_addr = mac_addr;
-		radio_api->filter(ieee802154_dev, true,
-				  IEEE802154_FILTER_TYPE_IEEE_ADDR,
-				  &filter);
+		// /* Set ieee address */
+		// filter.ieee_addr = mac_addr;
+		// radio_api->filter(ieee802154_dev, true,
+		// 		  IEEE802154_FILTER_TYPE_IEEE_ADDR,
+		// 		  &filter);
 
 #ifdef CONFIG_NET_CONFIG_SETTINGS
 		LOG_INF("Set panid %x", CONFIG_NET_CONFIG_IEEE802154_PAN_ID);
@@ -576,9 +599,45 @@ static bool init_ieee802154(void)
 	/* Start ieee802154 */
 	radio_api->start(ieee802154_dev);
 
+#if ENABLE_PROMISCUOUS_MODE
+	// **ENABLE PROMISCUOUS MODE AT HAL LEVEL**
+	LOG_INF("Enabling promiscuous mode at HAL level");
+	nrf_802154_promiscuous_set(true);
+
+	bool promisc = nrf_802154_promiscuous_get();
+	LOG_INF("Promiscuous mode is: %s", promisc ? "ENABLED" : "DISABLED");
+
+	// Force the nRF radio to continuous RX
+	LOG_INF("Setting radio to continuous RX mode");
+
+	struct ieee802154_config config;
+	config.rx_on_when_idle = true;
+
+	int ret = radio_api->configure(ieee802154_dev,
+	                               IEEE802154_CONFIG_RX_ON_WHEN_IDLE,
+	                               &config);
+	if (ret == 0) {
+		LOG_INF("Successfully enabled RX-on-when-idle");
+	} else {
+		LOG_ERR("Failed to enable RX-on-when-idle: %d", ret);
+	}
+#endif
+
 	return true;
 }
 
+#if ANALYZE_UART_BOTTLENECK
+int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
+{
+	uint32_t recv_count = atomic_inc(&packets_received);
+
+	LOG_INF("from RADIO: Received pkt %p, len %d [#%u]",
+	        pkt, net_pkt_get_len(pkt), recv_count);
+
+	k_fifo_put(&tx_queue, pkt);
+	return 0;
+}
+#else
 int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 {
 	LOG_INF("from RADIO: Received pkt %p, len %d", pkt, net_pkt_get_len(pkt));
@@ -587,6 +646,7 @@ int net_recv_data(struct net_if *iface, struct net_pkt *pkt)
 
 	return 0;
 }
+#endif
 
 enum net_verdict ieee802154_handle_ack(struct net_if *iface, struct net_pkt *pkt)
 {

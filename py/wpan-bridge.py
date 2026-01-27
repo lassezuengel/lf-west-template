@@ -2,6 +2,10 @@
 """
 Complete bridge between wpan_serial (802.15.4) and Linux TUN interface.
 Handles full 6LoWPAN compression/decompression.
+
+TODO: This is deprecated and not fully implemented! Use the modified contiki
+      native border router (for example, this working commit: https://github.com/lassezuengel/contiki/tree/e17887cb35d942d8e4a30ffbbf116db618d3e1fd)
+      instead!
 """
 
 import serial

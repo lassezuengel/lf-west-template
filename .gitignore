@@ -16,6 +16,8 @@ deps/
 **/include/
 **/simple_build/
 **/udp_build/
+**/fed_build/
+**/simplehailo_build/
 .vscode
 
 zephyr-tests/
