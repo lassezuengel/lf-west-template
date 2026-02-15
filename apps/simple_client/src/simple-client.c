@@ -155,7 +155,7 @@ static void start_client() {
 
 int main(void) {
   LOG_INF(APP_BANNER);
-  printk("What's up? Client running!\n");
+  LOG_INF("What's up? Client running!\n");
 
   init_network_manager();
 
@@ -208,6 +208,14 @@ static int start_tcp_proto(sa_family_t family,
     return -errno;
   }
 
+  int flag = 1;
+  int result = setsockopt(conf.tcp_sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+  if (result < 0) {
+    LOG_ERR("Failed to set TCP_NODELAY on TCP socket (%s): %d", conf.proto,
+            errno);
+    return -errno;
+  }
+
   ret = connect(conf.tcp_sock, addr, addrlen);
   if (ret < 0) {
     LOG_ERR("Cannot connect to TCP remote (%s): %d", conf.proto,
@@ -227,9 +235,9 @@ static int process_tcp_proto() {
       LOG_INF("%s TCP: Exchanged %u packets", conf.proto,
               conf.counter);
     }
-    printk("Sending stuff!\n");
+    LOG_INF("Sending stuff!\n");
 
-    k_msleep(3000);
+    k_msleep(250);
 
     ret = send_tcp_data();
     if (ret < 0) {
@@ -247,9 +255,17 @@ static int start_tcp(void) {
 
   addr6.sin6_family = AF_INET6;
   addr6.sin6_port = htons(PEER_PORT);
-  inet_pton(AF_INET6, CONFIG_NET_CONFIG_PEER_IPV6_ADDR,
-            &addr6.sin6_addr);
-
+  {
+    const char *peer = CONFIG_NET_CONFIG_PEER_IPV6_ADDR;
+    if (peer[0] != '\0') {
+      LOG_INF("Using peer address %s", peer);
+      inet_pton(AF_INET6, peer, &addr6.sin6_addr);
+    } else {
+      LOG_INF("Using fallback peer address");
+      const char *fallback = "fd01::5678";
+      inet_pton(AF_INET6, fallback, &addr6.sin6_addr);
+    }
+  }
   return start_tcp_proto(AF_INET6,
                          (struct sockaddr *)&addr6,
                          sizeof(addr6));

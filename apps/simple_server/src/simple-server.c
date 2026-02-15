@@ -82,7 +82,7 @@ static void init_connection_manager(void) {
 }
 
 int main(void) {
-  LOG_INF("What's up?");
+  LOG_INF("What's up? Server running!\n");
 
   init_connection_manager();
 
@@ -116,6 +116,15 @@ static int start_tcp_proto(struct data *data,
     return -errno;
   }
 
+  int flag = 1;
+  int result = setsockopt(data->tcp_sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+  if (result < 0) {
+    LOG_ERR("Failed to set TCP_NODELAY on TCP socket (%s): %d", data->proto,
+            errno);
+    return -errno;
+  }
+
+#if 0
   if (bind_addr->sa_family == AF_INET6) {
     optval = IPV6_PREFER_SRC_PUBLIC;
     (void)setsockopt(data->tcp_sock, IPPROTO_IPV6,
@@ -125,7 +134,9 @@ static int start_tcp_proto(struct data *data,
     optval = 1;
     (void)setsockopt(data->tcp_sock, IPPROTO_IPV6, IPV6_V6ONLY,
                      &optval, sizeof(optval));
+    LOG_INF("PREFERENCES and V6ONLY set");
   }
+#endif
 
   ret = bind(data->tcp_sock, bind_addr, bind_addrlen);
   if (ret < 0) {
@@ -163,14 +174,14 @@ void start_tcp() {
     return;
   }
 
+
   // Accept connections in a LOOP
   while(true) {
     struct sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
 
     LOG_INF("Waiting for connection...");
-    int client_sock = accept(conf.tcp_sock, (struct sockaddr *)&client_addr,
-                            &client_addr_len);
+    int client_sock = accept(conf.tcp_sock, (struct sockaddr *)&client_addr, &client_addr_len);
 
     if (client_sock < 0) {
       LOG_ERR("Accept error: %d", -errno);
@@ -179,9 +190,12 @@ void start_tcp() {
 
     LOG_INF("Client connected!");
 
+    int64_t current_time = k_uptime_get();
     while(true) {
       char buffer[128];
       ssize_t recv_len = recv(client_sock, buffer, sizeof(buffer), 0);
+      LOG_INF("Time since last receive: %lld ms", k_uptime_get() - current_time);
+      current_time = k_uptime_get();
 
       if (recv_len < 0) {
         LOG_ERR("Receive error: %d", -errno);
