@@ -60,25 +60,32 @@ class LFBuildError(Exception):
 class LFBuilder:
     """Handles building and deploying Lingua Franca federate programs"""
 
-    def __init__(self, source_file: str, remote_url: str = "hailo@hailo-desktop:~/lf"):
+    def __init__(self, source_file: str, remote_url: str = "hailo@hailo-desktop:~/lf", skip_ssh: bool = False):
         """
         Initialize the builder
 
         Args:
             source_file: Path to the .lf source file (relative to current directory)
             remote_url: SSH destination for file transfer (format: user@host:path)
+            skip_ssh: If True, skip SSH operations
         """
         self.source_file = Path(source_file)
         self.remote_url = remote_url
+        self.skip_ssh = skip_ssh
         self.cwd = Path.cwd()
 
+        # Get base name without extension for dynamic directory naming
+        self.base_name = self.source_file.stem
+
         # Build directories (all relative to current directory)
+        # fed-gen is fixed (used by lfc), fed_build is dynamic based on source filename
         self.fed_gen_dir = self.cwd / "fed-gen"
-        self.fed_build_dir = self.cwd / "fed_build"
+        self.fed_build_dir = self.cwd / f"{self.base_name}_build"
 
         # Validate inputs
         self._validate_source_file()
-        self._validate_remote_url()
+        if not skip_ssh:
+            self._validate_remote_url()
 
     def _validate_source_file(self) -> None:
         """Validate that the source file exists and has .lf extension"""
@@ -110,7 +117,7 @@ class LFBuilder:
 
     def clean(self) -> None:
         """Remove previous build artifacts"""
-        print(f"{Colors.CYAN}Cleaning previous builds...{Colors.RESET}")
+        print(f"{Colors.CYAN}Cleaning previous builds for {Colors.BOLD}{self.base_name}{Colors.RESET}{Colors.CYAN}...{Colors.RESET}")
 
         dirs_to_clean = [self.fed_build_dir, self.fed_gen_dir]
 
@@ -212,6 +219,10 @@ class LFBuilder:
 
     def ssh(self) -> None:
         """Transfer built files to remote server via SSH"""
+        if self.skip_ssh:
+            print(f"{Colors.YELLOW}SSH transfer skipped (--no-ssh mode){Colors.RESET}")
+            return
+
         print(f"{Colors.CYAN}Transferring files to {Colors.BOLD}{self.remote_url}{Colors.RESET}{Colors.CYAN}...{Colors.RESET}")
 
         if not self.fed_build_dir.exists():
@@ -252,7 +263,7 @@ class LFBuilder:
         print(f"{Colors.GREEN}Transfer complete{Colors.RESET}")
 
     def all(self) -> None:
-        """Run the complete pipeline: clean, build, and ssh"""
+        """Run the complete pipeline: clean, build, and optionally ssh"""
         self.clean()
         self.build()
         self.ssh()
@@ -264,9 +275,27 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Build only (no SSH)
   %(prog)s build -s src/NrfDistribute.lf
+
+  # Build and transfer with SSH
   %(prog)s all -s src/NrfDistribute.lf -r user@server:~/destination
-  %(prog)s ssh --remote-url dev@remote.server:~/lfprograms
+
+  # Build without SSH transfer
+  %(prog)s all -s src/NrfDistribute.lf --no-ssh
+
+  # Just transfer existing build
+  %(prog)s ssh -s src/NrfDistribute.lf -r dev@remote.server:~/lfprograms
+
+  # Clean specific experiment
+  %(prog)s clean -s experiments/MyExperiment.lf
+
+Note:
+  Build output directories are named based on the source file:
+    src/NrfDistribute.lf → NrfDistribute_build/
+    experiments/Test.lf  → Test_build/
+
+  The fed-gen/ directory is always used (required by lfc compiler)
         """
     )
 
@@ -288,10 +317,16 @@ Examples:
         help="SSH destination URL (default: hailo@hailo-desktop:~/lf)"
     )
 
+    parser.add_argument(
+        "--no-ssh",
+        action="store_true",
+        help="Skip SSH transfer (useful for 'all' command to do clean+build only)"
+    )
+
     args = parser.parse_args()
 
     try:
-        builder = LFBuilder(args.source, args.remote_url)
+        builder = LFBuilder(args.source, args.remote_url, skip_ssh=args.no_ssh)
 
         # Execute the requested command
         command_method = getattr(builder, args.command)
