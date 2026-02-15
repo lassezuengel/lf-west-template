@@ -1,0 +1,51 @@
+target C {
+    platform: {
+      name: "Zephyr",
+      board: nrf52833dk_nrf52833,
+      // user-threads: 2 // Two additional threads for troubleshooting
+    },
+    // systemview: enableAndInstrument,
+    coordination: decentralized,
+    clock-sync-options: {
+      local-federates-on: true,
+      period: 1 sec,
+      trials: 10,
+      // attenuation: 10
+    },
+    clock-sync: init,
+    // logging: warn,
+    ipVersion: ipv6,
+}
+
+reactor Leaf {
+  input in: int
+
+  reaction(in) {=
+    lf_print("Received input: %d", in->value);
+  =}
+}
+
+reactor Center {
+  output out: int
+
+  state counter: int = 0;
+
+  timer t(0, 1 sec);
+
+  reaction(t) -> out {=
+    self->counter++;
+
+    lf_set(out, self->counter);
+  =}
+}
+
+federated reactor {
+  l1 = new Leaf();
+  l2 = new Leaf();
+  l3 = new Leaf();
+  c  = new Center();
+
+  c.out -> l1.in;
+  c.out -> l2.in;
+  c.out -> l3.in;
+}

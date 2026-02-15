@@ -14,10 +14,7 @@ deps/
 **/src-gen/
 **/fed-gen/
 **/include/
-**/simple_build/
-**/udp_build/
-**/fed_build/
-**/simplehailo_build/
+**/*_build/
 .vscode
 
 zephyr-tests/
