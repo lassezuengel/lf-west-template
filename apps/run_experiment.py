@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""
+This script automates the process of running an experiment on the IoT-LAB testbed,
+specifically for two nrf52840dk nodes. It assumes the following:
+- You have compiled `echo_client.elf` and `echo_server.elf` binaries ready to be flashed on the nodes.
+  TODO: Add ability to pass in the .elf paths as arguments (currently hardcoded names), and from that information, derive
+        the amount of nodes needed. Though, for any 2-node experiment, this is sufficient.
+- The experiment will run for 20 minutes, and it will use exactly 2 nodes from the Saclay site with the nrf52840dk architecture.
+"""
 import subprocess
 import json
 import re
