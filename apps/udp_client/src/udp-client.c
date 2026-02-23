@@ -1,7 +1,7 @@
 /* echo-client.c - Simplified IPv6 TCP echo client */
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(net_udp_client_sample, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(net_udp_client_sample, LOG_LEVEL_INF);
 
 #include <errno.h>
 #include <stdio.h>
@@ -9,6 +9,7 @@ LOG_MODULE_REGISTER(net_udp_client_sample, LOG_LEVEL_DBG);
 
 #include <zephyr/posix/sys/eventfd.h>
 #include <zephyr/posix/poll.h>
+#include <zephyr/sys/util.h>
 
 #include <zephyr/net/conn_mgr_monitor.h>
 #include <zephyr/net/net_event.h>
@@ -106,6 +107,18 @@ int main(void) {
 /* UDP implementation */
 #define RECV_BUF_SIZE 128
 
+static void log_client_tx_rate(uint32_t *packets_last_sec,
+                               int64_t *last_log_ms) {
+  int64_t now = k_uptime_get();
+
+  while ((now - *last_log_ms) >= 1000) {
+    LOG_INF("Client->server rate: sent %u packets in last second",
+            *packets_last_sec);
+    *packets_last_sec = 0;
+    *last_log_ms += 1000;
+  }
+}
+
 static ssize_t sendall(const void *buf, size_t len, struct sockaddr *addr, socklen_t addrlen) {
   while (len) {
     ssize_t out_len = sendto(conf.udp_sock, buf, len, 0, addr, addrlen);
@@ -122,49 +135,98 @@ static ssize_t sendall(const void *buf, size_t len, struct sockaddr *addr, sockl
 
 static int process_udp_proto(struct sockaddr *addr, socklen_t addrlen) {
   int ret;
+  uint32_t tx_packets_last_sec = 0;
+  int64_t last_rate_log_ms = k_uptime_get();
 
   while(true) {
-    if (++conf.counter % 20 == 0U) {
-      LOG_INF("%s TCP: Exchanged %u packets", conf.proto,
+    if (++conf.counter % 1000 == 0U) {
+      LOG_INF("%s UDP: Exchanged %u packets", conf.proto,
               conf.counter);
     }
-    k_msleep(2000);
 
-    LOG_INF("Sending stuff!");
+    LOG_DBG("Sending stuff!");
     ret = sendall(lorem_ipsum, 12, addr, addrlen);
     if (ret < 0) {
       LOG_ERR("%s UDP: Failed to send data, errno %d", conf.proto,
               errno);
+      log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
+      k_msleep(100);
       continue;
     }
 
-    char recv_buf[RECV_BUF_SIZE];
-    size_t recv_buf_size = sizeof(recv_buf);
+    tx_packets_last_sec++;
+    log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
 
-    // Use poll for 2 second timeout
-    struct pollfd fds[1];
-    fds[0].fd = conf.udp_sock;
-    fds[0].events = POLLIN;
+#ifndef CONFIG_UDP_CLIENT_EXPECT_REPLIES
+      LOG_DBG("Reply wait disabled by CONFIG_UDP_CLIENT_EXPECT_REPLIES");
+#else 
+      char recv_buf[RECV_BUF_SIZE];
+      size_t recv_buf_size = sizeof(recv_buf);
+      int wait_remaining_ms = CONFIG_UDP_CLIENT_REPLY_TIMEOUT_MS;
+      bool got_reply = false;
 
-    ret = poll(fds, 1, 1000); // 1000ms = 1 second
-    if (ret < 0) {
-      LOG_ERR("Poll failed: %d", -errno);
-      return -errno;
-    } else if (ret == 0) {
-      LOG_WRN("Timeout: No response received");
-      continue;
+      struct pollfd fds[1];
+      fds[0].fd = conf.udp_sock;
+      fds[0].events = POLLIN;
+
+      while (wait_remaining_ms > 0) {
+        int64_t now = k_uptime_get();
+        int64_t until_rate_log = 1000 - (now - last_rate_log_ms);
+        int poll_timeout_ms;
+
+        if (until_rate_log <= 0) {
+          log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
+          continue;
+        }
+
+        poll_timeout_ms = MIN(wait_remaining_ms, (int)until_rate_log);
+        ret = poll(fds, 1, poll_timeout_ms);
+        if (ret < 0) {
+          LOG_ERR("Poll failed: %d", -errno);
+          return -errno;
+        }
+
+        wait_remaining_ms -= poll_timeout_ms;
+        log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
+
+        if (ret == 0) {
+          continue;
+        }
+
+        ret = recv(conf.udp_sock, recv_buf, recv_buf_size - 1, 0);
+        if (ret < 0) {
+          LOG_ERR("Receive failed: %d", -errno);
+          break;
+        }
+
+        recv_buf[ret] = '\0';
+        LOG_INF("Received %d bytes: %s", ret, recv_buf);
+        got_reply = true;
+        break;
+      }
+
+      if (!got_reply) {
+        LOG_WRN("Timeout: no response received within %d ms",
+                CONFIG_UDP_CLIENT_REPLY_TIMEOUT_MS);
+      }
+#endif
+
+    int send_delay_ms = CONFIG_UDP_CLIENT_SEND_DELAY_MS;
+    while (send_delay_ms > 0) {
+      int64_t now = k_uptime_get();
+      int64_t until_rate_log = 1000 - (now - last_rate_log_ms);
+      int sleep_ms;
+
+      if (until_rate_log <= 0) {
+        log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
+        continue;
+      }
+
+      sleep_ms = MIN(send_delay_ms, (int)until_rate_log);
+      k_msleep(sleep_ms);
+      send_delay_ms -= sleep_ms;
+      log_client_tx_rate(&tx_packets_last_sec, &last_rate_log_ms);
     }
-
-    // Receive response
-    ret = recv(conf.udp_sock, recv_buf, recv_buf_size - 1, 0);
-
-    if (ret < 0) {
-      LOG_ERR("Receive failed: %d", -errno);
-      continue;
-    }
-
-    recv_buf[ret] = '\0'; // Null-terminate the received string
-    LOG_INF("Received %d bytes: %s", ret, recv_buf);
   }
 
   return ret;

@@ -3,12 +3,14 @@
    so we call it the server. */
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(net_udp_server_sample, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(net_udp_server_sample, LOG_LEVEL_INF);
 
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/linker/sections.h>
+#include <zephyr/posix/poll.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/util.h>
 
 #include <zephyr/net/net_core.h>
 #include <zephyr/net/socket.h>
@@ -153,6 +155,18 @@ static ssize_t sendall(const void *buf, size_t len, struct sockaddr *addr, sockl
   return 0;
 }
 
+static void log_server_rx_rate(uint32_t *packets_last_sec,
+                               int64_t *last_log_ms) {
+  int64_t now = k_uptime_get();
+
+  while ((now - *last_log_ms) >= 1000) {
+    LOG_INF("Client->server rate: received %u packets in last second",
+            *packets_last_sec);
+    *packets_last_sec = 0;
+    *last_log_ms += 1000;
+  }
+}
+
 void start_udp() {
   struct sockaddr_in6 addr6;
 
@@ -170,37 +184,62 @@ void start_udp() {
   LOG_INF("UDP server started on port %d", ntohs(addr6.sin6_port));
 
   struct sockaddr_in6 client_addr6;
-
-  size_t count = 0;
+  uint32_t rx_packets_last_sec = 0;
+  int64_t last_rate_log_ms = k_uptime_get();
 
   while(true) {
+    int ret;
+    struct pollfd fds[1];
+    int64_t now = k_uptime_get();
+    int64_t until_rate_log = 1000 - (now - last_rate_log_ms);
+    int poll_timeout_ms = (until_rate_log <= 0) ? 0 : (int)until_rate_log;
+    socklen_t client_addr_len = sizeof(client_addr6);
+
+    fds[0].fd = conf.udp_sock;
+    fds[0].events = POLLIN;
+
+    ret = poll(fds, 1, poll_timeout_ms);
+    if (ret < 0) {
+      LOG_ERR("Poll error: %d", -errno);
+      continue;
+    }
+
+    log_server_rx_rate(&rx_packets_last_sec, &last_rate_log_ms);
+
+    if (ret == 0) {
+      continue;
+    }
+
     char buffer[128];
     ssize_t recv_len = recvfrom(conf.udp_sock, buffer, sizeof(buffer) - 1, 0,
-                                (struct sockaddr *)&client_addr6, &(socklen_t){ sizeof(client_addr6) });
+                                (struct sockaddr *)&client_addr6, &client_addr_len);
 
     if (recv_len < 0) {
       LOG_ERR("Receive error: %d", -errno);
       continue;
     }
 
-    LOG_INF("Received %d bytes: %.*s", recv_len, (int)recv_len, buffer);
+    rx_packets_last_sec++;
 
-    if(++count % 10 == 0) {
-      LOG_INF("Processed %d packets so far, simulating packet loss (no response sent)", (int)count);
-    } else {
-      char message[] = "Okay";
-      ssize_t sent_len = sendall(message, sizeof(message), (struct sockaddr *)&client_addr6, sizeof(client_addr6));
+    LOG_DBG("Received %d bytes: %.*s", recv_len, (int)recv_len, buffer);
 
-      if (sent_len < 0) {
-        LOG_ERR("Send error: %d", -errno);
-        continue;
-      }
-
-      char addr_str_client[NET_IPV6_ADDR_LEN];
-      LOG_INF("Sent %d bytes response to %s",
-            (int)sizeof(message),
-            net_addr_ntop(AF_INET6, &client_addr6.sin6_addr, addr_str_client, sizeof(addr_str_client)));
+    if (!IS_ENABLED(CONFIG_UDP_SERVER_SEND_REPLIES)) {
+      LOG_DBG("Reply disabled by CONFIG_UDP_SERVER_SEND_REPLIES");
+      continue;
     }
+
+    char message[] = "Okay";
+    ssize_t sent_len = sendall(message, sizeof(message), (struct sockaddr *)&client_addr6, sizeof(client_addr6));
+
+    if (sent_len < 0) {
+      LOG_ERR("Send error: %d", -errno);
+      continue;
+    }
+
+    char addr_str_client[NET_IPV6_ADDR_LEN];
+    LOG_INF("Sent %d bytes response to %s",
+          (int)sizeof(message),
+          net_addr_ntop(AF_INET6, &client_addr6.sin6_addr, addr_str_client, sizeof(addr_str_client)));
   }
 }
 

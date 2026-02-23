@@ -12,4 +12,12 @@ config NET_SAMPLE_NUM_HANDLERS
 	  Each connection is served by a thread which needs
 	  memory. Only increase the value here if really needed.
 
+config UDP_SERVER_SEND_REPLIES
+	bool "Send UDP replies to clients"
+	default y
+	help
+	  If enabled, the UDP server sends a response payload back to
+	  clients after receiving a packet. If disabled, received packets
+	  are only logged and no response is sent.
+
 source "Kconfig.zephyr"
