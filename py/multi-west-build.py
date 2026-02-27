@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds multiple Zephyr apps and collect ELF artifacts in one directory.
+Builds multiple Zephyr apps and collect firmware artifacts in one directory.
 """
 
 import argparse
@@ -38,10 +38,14 @@ def resolve_input_dir(input_dir: str) -> Path:
     return path
 
 
-def build_and_collect(project: str, board: str, app_dirs: list[str]) -> int:
+def build_and_collect(
+    project: str, board: str, app_dirs: list[str], use_hex: bool = False
+) -> int:
     project_safe = sanitize_name(project)
     board_safe = sanitize_name(board)
     output_dir = Path.cwd() / f"{project_safe}_{board_safe}_build"
+    artifact_ext = "hex" if use_hex else "elf"
+    artifact_name = f"zephyr.{artifact_ext}"
 
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -75,24 +79,26 @@ def build_and_collect(project: str, board: str, app_dirs: list[str]) -> int:
             cwd=Path.cwd(),
         )
 
-        elf_path = build_dir / "zephyr" / "zephyr.elf"
-        if not elf_path.exists():
+        artifact_path = build_dir / "zephyr" / artifact_name
+        if not artifact_path.exists():
             raise FileNotFoundError(
-                f"[{app_name}] Build finished but ELF not found: {elf_path}"
+                f"[{app_name}] Build finished but {artifact_ext.upper()} not found: {artifact_path}"
             )
 
-        destination = output_dir / f"{app_name}_zephyr.elf"
-        shutil.copy2(elf_path, destination)
+        destination = output_dir / f"{app_name}_zephyr.{artifact_ext}"
+        shutil.copy2(artifact_path, destination)
         print(f"[{app_name}] Collected -> {destination}")
 
-    print(f"\nDone. Collected {len(app_dirs)} ELF file(s) in {output_dir}")
+    print(
+        f"\nDone. Collected {len(app_dirs)} {artifact_ext.upper()} file(s) in {output_dir}"
+    )
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Clean, build, and collect Zephyr ELF files from multiple app directories"
+            "Clean, build, and collect Zephyr firmware files from multiple app directories"
         ),
         epilog=(
             "Example:\n"
@@ -108,11 +114,21 @@ def main() -> int:
         nargs="+",
         help="One or more Zephyr app directories to build",
     )
+    parser.add_argument(
+        "--hex",
+        action="store_true",
+        help="Collect HEX artifacts instead of ELF (default: ELF)",
+    )
 
     args = parser.parse_args()
 
     try:
-        return build_and_collect(args.project_name, args.board, args.directories)
+        return build_and_collect(
+            args.project_name,
+            args.board,
+            args.directories,
+            use_hex=args.hex,
+        )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
