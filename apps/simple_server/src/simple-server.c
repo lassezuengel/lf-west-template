@@ -5,6 +5,8 @@ LOG_MODULE_REGISTER(net_simple_server_sample, LOG_LEVEL_DBG);
 
 #include <errno.h>
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
+#include <assert.h>
 #include <zephyr/linker/sections.h>
 #include <zephyr/shell/shell.h>
 
@@ -15,6 +17,9 @@ LOG_MODULE_REGISTER(net_simple_server_sample, LOG_LEVEL_DBG);
 #include <zephyr/net/net_mgmt.h>
 
 #include "common.h"
+
+#define LED0_NODE DT_PATH(leds, led_0)
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 static struct k_sem quit_lock;
 static struct net_mgmt_event_callback mgmt_cb;
@@ -87,6 +92,9 @@ int main(void) {
   init_connection_manager();
 
   k_sem_take(&run_app, K_FOREVER);
+
+  assert(device_is_ready(led.port));
+  gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
 
   // k_thread_start(tcp6_thread_id);
   start_tcp();
@@ -206,6 +214,8 @@ void start_tcp() {
       }
 
       LOG_INF("Received %d bytes: %.*s", recv_len, (int)recv_len, buffer);
+
+      gpio_pin_toggle_dt(&led);
     }
 
     close(client_sock);
