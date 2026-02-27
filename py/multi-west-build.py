@@ -18,6 +18,7 @@ def sanitize_name(raw: str) -> str:
 
 
 def run_command(command: list[str], cwd: Path) -> None:
+    print(f"Running command in {cwd}:\n  {' '.join(command)}")
     result = subprocess.run(command, cwd=cwd)
     if result.returncode != 0:
         raise RuntimeError(

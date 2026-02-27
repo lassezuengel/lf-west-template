@@ -23,6 +23,7 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 static struct k_sem quit_lock;
 static struct net_mgmt_event_callback mgmt_cb;
+static struct k_work_delayable connection_work;
 static bool connected;
 K_SEM_DEFINE(run_app, 0, 1);
 static bool want_to_quit = false;
@@ -33,55 +34,53 @@ K_THREAD_DEFINE(tcp6_thread_id, STACK_SIZE,
 
 #define EVENT_MASK (NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED)
 
+static void connection_work_handler(struct k_work* work) { k_sem_give(&run_app); }
+
 // Network management event callback handler.
 static void event_handler(struct net_mgmt_event_callback *cb,
                           uint32_t mgmt_event, struct net_if *iface) {
   ARG_UNUSED(iface);
   ARG_UNUSED(cb);
 
-  if ((mgmt_event & EVENT_MASK) != mgmt_event) {
-    return;
-  }
+  switch (mgmt_event) {
+  case NET_EVENT_L4_CONNECTED:
+    k_work_schedule(&connection_work, K_NO_WAIT);
+    break;
 
-  if (want_to_quit) {
-    k_sem_give(&run_app);
-    want_to_quit = false;
-  }
-
-  if (mgmt_event == NET_EVENT_L4_CONNECTED) {
-    LOG_INF("Network connected");
-
-    connected = true;
-    k_sem_give(&run_app);
-
-    return;
-  }
-
-  if (mgmt_event == NET_EVENT_L4_DISCONNECTED) {
-    if (connected == false) {
-      LOG_INF("Waiting network to be connected");
-    } else {
-      LOG_INF("Network disconnected");
-      connected = false;
-    }
-
+  case NET_EVENT_L4_DISCONNECTED:
     k_sem_reset(&run_app);
+    break;
 
-    return;
+  default:
+    break;
   }
 }
 
 // Initializes the connection manager.
 static void init_connection_manager(void) {
-  k_sem_init(&quit_lock, 0, K_SEM_MAX_LIMIT);
+  k_work_init_delayable(&connection_work, connection_work_handler);
 
   if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
-    net_mgmt_init_event_callback(&mgmt_cb,
-                                 event_handler, EVENT_MASK);
+    net_mgmt_init_event_callback(&mgmt_cb, event_handler, EVENT_MASK);
     net_mgmt_add_event_callback(&mgmt_cb);
 
-    conn_mgr_mon_resend_status();
+    // We would usually call `conn_mgr_mon_resend_status()` now in order
+    // to trigger an immediate status update, but this causes a crash in
+    // Zephyr 4.1.0 (but not 3.7.0, interestingly).
+    //
+    // Instead, we will check the current connection state and signal
+    // the semaphore if we are already connected.
+
+    // Instead, check if already connected
+    struct net_if* iface = net_if_get_default();
+    if (iface && net_if_is_up(iface)) {
+      if (net_if_ipv6_get_global_addr(NET_ADDR_PREFERRED, &iface)) {
+        k_sem_give(&run_app);
+      }
+    } // else: just keep waiting for the event callback to trigger when the interface comes up
   } else {
+    // Network manager is not enabled. This is usually not intended behavior,
+    // but we will just signal the semaphore immediately in this case to avoid blocking forever.
     k_sem_give(&run_app);
   }
 }
@@ -90,11 +89,15 @@ int main(void) {
   LOG_INF("What's up? Server running!\n");
 
   init_connection_manager();
-
   k_sem_take(&run_app, K_FOREVER);
 
   assert(device_is_ready(led.port));
   gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+
+  // for(int i = 0; i < 30; i++) {
+  //   gpio_pin_toggle_dt(&led);
+  //   k_msleep(100);
+  // }
 
   // k_thread_start(tcp6_thread_id);
   start_tcp();

@@ -39,6 +39,7 @@ static APP_BMEM bool connected;
 K_SEM_DEFINE(run_app, 0, 1);
 
 static struct net_mgmt_event_callback mgmt_cb;
+static struct k_work_delayable connection_work;
 
 // Prepares the fds for polling.
 static void prepare_fds(void) {
@@ -99,40 +100,62 @@ static int run_tcp(void) {
   return 0;
 }
 
-// Sets up network event handler for connection management.
-// On connection, it gives the semaphore to allow the client to run.
+static void connection_work_handler(struct k_work* work) { k_sem_give(&run_app); }
+
+// Network management event callback handler.
 static void event_handler(struct net_mgmt_event_callback *cb,
                           uint32_t mgmt_event, struct net_if *iface) {
-  if ((mgmt_event & EVENT_MASK) != mgmt_event) {
-    return;
-  }
+  ARG_UNUSED(iface);
+  ARG_UNUSED(cb);
 
-  if (mgmt_event == NET_EVENT_L4_CONNECTED) {
+  switch (mgmt_event) {
+  case NET_EVENT_L4_CONNECTED:
     LOG_INF("Network connected");
     connected = true;
-    k_sem_give(&run_app);
-    return;
-  }
+    k_work_schedule(&connection_work, K_NO_WAIT);
+    break;
 
-  if (mgmt_event == NET_EVENT_L4_DISCONNECTED) {
+  case NET_EVENT_L4_DISCONNECTED:
     LOG_INF("Network disconnected");
     connected = false;
     k_sem_reset(&run_app);
-    return;
+    break;
+
+  default:
+    break;
   }
 }
 
-// Initializes network manager and connection event callback.
-static void init_network_manager(void) {
+// Initializes the connection manager.
+static void init_connection_manager(void) {
+  k_work_init_delayable(&connection_work, connection_work_handler);
+
   if (IS_ENABLED(CONFIG_NET_CONNECTION_MANAGER)) {
-    net_mgmt_init_event_callback(&mgmt_cb,
-                                 event_handler, EVENT_MASK);
+    net_mgmt_init_event_callback(&mgmt_cb, event_handler, EVENT_MASK);
     net_mgmt_add_event_callback(&mgmt_cb);
 
-    conn_mgr_mon_resend_status();
+    // We would usually call `conn_mgr_mon_resend_status()` now in order
+    // to trigger an immediate status update, but this causes a crash in
+    // Zephyr 4.1.0 (but not 3.7.0, interestingly).
+    //
+    // Instead, we will check the current connection state and signal
+    // the semaphore if we are already connected.
+
+    // Instead, check if already connected
+    struct net_if* iface = net_if_get_default();
+    if (iface && net_if_is_up(iface)) {
+      if (net_if_ipv6_get_global_addr(NET_ADDR_PREFERRED, &iface)) {
+        k_sem_give(&run_app);
+        LOG_INF("Already connected at startup");
+        connected = true;
+      }
+    } // else: just keep waiting for the event callback to trigger when the interface comes up
   } else {
-    connected = true;
+    // Network manager is not enabled. This is usually not intended behavior,
+    // but we will just signal the semaphore immediately in this case to avoid blocking forever.
     k_sem_give(&run_app);
+    connected = true;
+    LOG_INF("Network manager not enabled, assuming network is connected");
   }
 }
 
@@ -157,7 +180,7 @@ int main(void) {
   LOG_INF(APP_BANNER);
   LOG_INF("What's up? Client running!\n");
 
-  init_network_manager();
+  init_connection_manager();
 
   k_thread_priority_set(k_current_get(), THREAD_PRIORITY);
 
