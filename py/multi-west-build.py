@@ -57,27 +57,30 @@ def build_and_collect(
         app_dir = resolve_input_dir(app_dir_raw)
         app_name = sanitize_name(app_dir.name)
         build_dir = app_dir / "build"
+        overlay_config = app_dir / "overlay-802154.conf"
 
         if build_dir.exists():
             print(f"[{app_name}] Cleaning {build_dir}")
             shutil.rmtree(build_dir)
 
         print(f"[{app_name}] Building for board '{board}'")
-        run_command(
-            [
-                "west",
-                "build",
-                "-p",
-                "always",
-                "-b",
-                board,
-                "-s",
-                str(app_dir),
-                "-d",
-                str(build_dir),
-            ],
-            cwd=Path.cwd(),
-        )
+        command = [
+            "west",
+            "build",
+            "-p",
+            "always",
+            "-b",
+            board,
+            "-s",
+            str(app_dir),
+            "-d",
+            str(build_dir),
+        ]
+
+        if overlay_config.exists():
+            command.extend(["--", f"-DOVERLAY_CONFIG={overlay_config.name}"])
+
+        run_command(command, cwd=app_dir)
 
         artifact_path = build_dir / "zephyr" / artifact_name
         if not artifact_path.exists():
