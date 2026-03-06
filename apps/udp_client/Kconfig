@@ -1,0 +1,40 @@
+# Private config options for echo-client sample app
+
+# Copyright (c) 2018 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Networking echo-client sample application"
+
+config NET_SAMPLE_SEND_ITERATIONS
+	int "Send sample data this many times"
+	default 0
+	help
+	  Send sample data this many times before exiting. A value of
+	  zero means that the sample application is run forever.
+
+config UDP_CLIENT_EXPECT_REPLIES
+	bool "Expect UDP replies from server"
+	default y
+	help
+	  If enabled, the client waits for a reply packet after each
+	  outgoing packet. If disabled, the client sends packets without
+	  waiting for responses.
+
+config UDP_CLIENT_REPLY_TIMEOUT_MS
+	int "Reply wait timeout in milliseconds"
+	range 1 60000
+	default 2000
+	depends on UDP_CLIENT_EXPECT_REPLIES
+	help
+	  Maximum time to wait for a server response after sending a
+	  UDP packet.
+
+config UDP_CLIENT_SEND_DELAY_MS
+	int "Delay between outgoing UDP packets in milliseconds"
+	range 0 60000
+	default 2000
+	help
+	  Delay after each sent packet before sending the next packet.
+	  Set to 0 for maximum transmit rate.
+
+source "Kconfig.zephyr"

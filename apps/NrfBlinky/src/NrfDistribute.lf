@@ -1,34 +1,59 @@
 target C {
-    platform: {
-        name: "Zephyr",
-        board: nrf52840dk_nrf52840,
-    },
+    // platform: {
+    //     name: "Zephyr",
+    //     board: nrf52833dk_nrf52833,
+    // },
     // systemview: enableAndInstrument,
-    coordination: decentralized
+    coordination: decentralized,
+    logging: warn,
+    ipVersion: ipv6
 }
 
-reactor Count {
+reactor PrintCount(period: time = 1 sec, phase: time = 0 sec) {
+  input in: int
   output out: int
+
   state c: int = 0
-  timer t(0, 1 sec)
+  timer t(phase, period)
+
+  state startup_offset : interval_t
+
+  reaction(startup) {=
+    self->startup_offset = lf_time_physical_elapsed();
+    lf_print_error("Startup offset: %lld ms\n", self->startup_offset / 1000000);
+  =}
 
   reaction(t) -> out {=
+    if(self->c % 1 == 0) {
+      interval_t t = lf_time_logical_elapsed();
+      interval_t T = lf_time_physical_elapsed();
+
+      lf_print_error("Sending:  %d", self->c);
+      lf_print_error(
+        "  Elapsed logical time: %lld ms, physical time: %lld ms, lag: %lld ms\n",
+        t / 1000000, T / 1000000, (T-t) / 1000000
+      );
+    }
     lf_set(out, self->c++);
   =}
-}
-
-reactor Print {
-  input in: int
 
   reaction(in) {=
-    lf_print("Received: %d at (%lld, %d)", in->value,
-        lf_time_logical_elapsed(), lf_tag().microstep
-    );
+    if(in->value % 1 == 0) {
+      interval_t t = lf_time_logical_elapsed();
+      interval_t T = lf_time_physical_elapsed();
+
+      lf_print_error("Received: %d", in->value);
+      lf_print_error(
+        "  Elapsed logical time: %lld ms, physical time: %lld ms, lag: %lld ms\n",
+        t / 1000000, T / 1000000, (T-t) / 1000000
+      );
+    }
   =}
 }
 
 federated reactor {
-  c = new Count()
-  p = new Print()
-  c.out -> p.in
+  p1 = new PrintCount(period = 500 msec, phase = 0 msec)
+  c1 = new PrintCount(period = 500 msec, phase = 250 msec)
+  p1.out -> c1.in;
+  c1.out -> p1.in;
 }

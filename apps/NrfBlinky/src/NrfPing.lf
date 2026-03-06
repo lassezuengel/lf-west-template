@@ -1,0 +1,61 @@
+target C {
+    platform: {
+        name: "Zephyr",
+        board: nrf52833dk_nrf52833,
+        // user-threads: 2 // Two additional threads for troubleshooting
+    },
+    // systemview: enableAndInstrument,
+    coordination: decentralized,
+    clock-sync-options: {
+      local-federates-on: true,
+      period: 1 sec,
+      trials: 10,
+      // attenuation: 10
+    },
+    clock-sync: init,
+    logging: warn,
+    ipVersion: ipv6,
+}
+
+reactor Sensor {
+  output out: int
+
+  timer t(0 sec, 15 msec)
+
+  state c: int = 0
+
+  reaction(t) -> out {=
+    if(self-> c % 5 == 0) {
+      int lag = (int)(lf_time_physical_elapsed() - lf_time_logical_elapsed());
+
+      lf_print_error("****************************** Sensor     sent     command: %d", self->c);
+      lf_print_error("                                 with lag %d ms", (lag / 1000000));
+    }
+
+    lf_set(out, self->c);
+    self->c = self->c + 1;
+  =}
+}
+
+reactor Controller {
+  input in: int
+  output out: int
+
+  reaction(in) -> out {=
+    if(in->value % 5 == 0) {
+      int lag = (int)(lf_time_physical_elapsed() - lf_time_logical_elapsed());
+
+      lf_print_error("****************************** Controller received command: %d", in->value);
+      lf_print_error("                                 with lag %d ms", (lag / 1000000));
+    }
+
+    lf_set(out, in->value);
+  =}
+}
+
+federated reactor {
+  c = new Sensor()
+  p = new Controller()
+
+  c.out -> p.in;
+}

@@ -1,0 +1,13 @@
+/*
+ * Copyright (c) 2024
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Device tree overlay for nRF52840DK to use UART0 instead of CDC ACM
+ * This routes to the J-Link VCOM (P0.06 = TxD, P0.08 = RxD)
+ */
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+	/delete-property/ hw-flow-control;
+};

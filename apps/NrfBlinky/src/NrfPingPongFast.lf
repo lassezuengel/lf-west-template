@@ -1,0 +1,62 @@
+target C {
+    platform: {
+        name: "Zephyr",
+        board: nrf52833dk_nrf52833,
+        // user-threads: 2 // Two additional threads for troubleshooting
+    },
+    // systemview: enableAndInstrument,
+    coordination: decentralized,
+    clock-sync-options: {
+      local-federates-on: true,
+      period: 1 sec,
+      trials: 10,
+      // attenuation: 10
+    },
+    clock-sync: init,
+    logging: warn,
+    ipVersion: ipv6,
+}
+
+reactor Ping {
+  input in: int
+  output out: int
+
+  reaction(startup) -> out {=
+    lf_set(out, 1);
+  =}
+
+  reaction(in) -> out {=
+    if(in->value % 10 == 0) {
+      int lag = (int)(lf_time_physical_elapsed() - lf_time_logical_elapsed());
+
+      lf_print_error("*** Ping received command: %d", in->value);
+      lf_print_error("      with lag %d ms", (lag / 1000000));
+    }
+
+    lf_set(out, in->value + 1);
+  =}
+}
+
+reactor Pong {
+  input in: int
+  output out: int
+
+  reaction(in) -> out {=
+    if(in->value % 10 == 0) {
+      int lag = (int)(lf_time_physical_elapsed() - lf_time_logical_elapsed());
+
+      lf_print_error("*** Pong received command: %d", in->value);
+      lf_print_error("      with lag %d ms", (lag / 1000000));
+    }
+
+    lf_set(out, in->value + 1);
+  =}
+}
+
+federated reactor {
+  p = new Ping()
+  q = new Pong()
+
+  p.out -> q.in after 12 ms;
+  q.out -> p.in after 12 ms;
+}

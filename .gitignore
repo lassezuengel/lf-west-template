@@ -14,7 +14,7 @@ deps/
 **/src-gen/
 **/fed-gen/
 **/include/
-
+**/*_build/
 .vscode
 
 zephyr-tests/

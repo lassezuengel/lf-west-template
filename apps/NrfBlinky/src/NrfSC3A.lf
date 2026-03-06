@@ -1,0 +1,69 @@
+target C {
+    platform: {
+        name: "Zephyr",
+        board: nrf52833dk_nrf52833,
+        // user-threads: 2 // Two additional threads for troubleshooting
+    },
+    // systemview: enableAndInstrument,
+    coordination: decentralized,
+    clock-sync-options: {
+      local-federates-on: true,
+      period: 1 sec,
+      trials: 10
+    },
+    clock-sync: init,
+    logging: warn,
+    ipVersion: ipv6,
+}
+
+reactor Sensor {
+  output out: int
+
+  timer t(0 sec, 200 msec)
+
+  state c: int = 0
+
+  reaction(t) -> out {=
+    lf_set(out, self->c);
+    // lf_print_error("************************* Sensor     sent     command: %d", self->c);
+    self->c = self->c + 1;
+  =}
+}
+
+reactor Controller {
+  input in: int
+  output out: int
+
+  reaction(in) -> out {=
+    // Simple control logic: pass the input to output
+    lf_set(out, in->value);
+    // lf_print_error("************************* Controller received command: %d", in->value);
+  =}
+}
+
+reactor Actuator {
+  input in: int
+
+  reaction(in) {=
+    if(in->value % 5 == 0) {
+      int lag = (int)(lf_time_physical_elapsed() - lf_time_logical_elapsed());
+
+      lf_print_error("*** ... Actuator received command: %d", in->value);
+      lf_print_error("          with lag %d ms", (lag / 1000000));
+    }
+  =}
+}
+
+federated reactor {
+  sensor = new Sensor()
+  c1 = new Controller()
+  c2 = new Controller()
+  c3 = new Controller()
+
+  actuator = new Actuator()
+
+  sensor.out -> c1.in after 15ms;
+  c1.out -> c2.in after 15ms;
+  c2.out -> c3.in after 15ms;
+  c3.out -> actuator.in after 15ms;
+}
