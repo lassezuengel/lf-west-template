@@ -15,6 +15,7 @@ LOG_MODULE_REGISTER(net_simple_server_sample, LOG_LEVEL_DBG);
 #include <zephyr/net/conn_mgr_monitor.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/net_if.h>
 
 #include "common.h"
 
